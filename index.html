@@ -1,0 +1,2584 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Fish the Phish – Phishing Awareness Game</title>
+
+  <!--
+    SECURITY: Content Security Policy
+    - default-src 'self' — only load resources from this origin
+    - script-src includes CDN for jsPDF only
+    - style-src includes Google Fonts
+    - font-src includes Google Fonts
+    - img-src 'self' data: blob: — needed for certificate
+    - object-src 'none' — disables Flash/plugins entirely
+    - connect-src includes *.workers.dev for the AI proxy
+  -->
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self';
+                 script-src 'self' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net 'unsafe-inline';
+                 style-src 'self' https://fonts.googleapis.com 'unsafe-inline';
+                 font-src https://fonts.gstatic.com;
+                 img-src 'self' data: blob:;
+                 connect-src 'self' https://*.workers.dev;
+                 object-src 'none';
+                 base-uri 'self';" />
+
+  <!-- Accessibility: Atkinson Hyperlegible — designed for low-vision readers -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet" />
+
+  <!-- jsPDF for certificate generation -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
+  <style>
+    /* ============================================================
+       DESIGN TOKENS & RESET
+       Warm, high-contrast palette optimised for seniors:
+       - Minimum 7:1 contrast ratio on all text
+       - Minimum 18px body, 24px headings
+    ============================================================ */
+    :root {
+      --blue-deep:    #1a3a5c;   /* primary dark */
+      --blue-mid:     #2e6da4;   /* links, accents */
+      --blue-light:   #ddeeff;   /* card backgrounds */
+      --gold:         #e8a020;   /* shields, highlights */
+      --gold-light:   #fff4d6;   /* gentle backgrounds */
+      --sage:         #3a6e4e;   /* "Keep" button */
+      --sage-light:   #d6ede1;
+      --red-scam:     #b52020;   /* "Delete" button */
+      --red-light:    #fde8e8;
+      --cream:        #fdf8f0;   /* page background */
+      --grey-mid:     #555f6b;   /* secondary text */
+      --grey-light:   #e8ecf0;   /* borders */
+      --white:        #ffffff;
+      --shadow-soft:  0 4px 18px rgba(0,0,0,.12);
+      --shadow-card:  0 2px 10px rgba(0,0,0,.10);
+      --radius:       14px;
+      --radius-sm:    8px;
+      --font:         'Atkinson Hyperlegible', Georgia, serif;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html { font-size: 18px; scroll-behavior: smooth; }
+
+    body {
+      font-family: var(--font);
+      background: var(--cream);
+      color: var(--blue-deep);
+      min-height: 100vh;
+      line-height: 1.6;
+    }
+
+    /* ============================================================
+       TOP BAR
+    ============================================================ */
+    #top-bar {
+      background: var(--blue-deep);
+      color: var(--white);
+      padding: 14px 28px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      box-shadow: var(--shadow-soft);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+
+    #top-bar h1 {
+      font-size: 1.6rem;
+      font-weight: 700;
+      letter-spacing: -.5px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    #top-bar h1 .fish-icon { font-size: 1.8rem; }
+
+    #shields-row {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+
+    .shield {
+      width: 34px;
+      height: 38px;
+      transition: transform .25s;
+    }
+
+    .shield.earned { filter: drop-shadow(0 0 6px var(--gold)); }
+    .shield:not(.earned) { opacity: .35; }
+
+    #reset-btn {
+      background: transparent;
+      border: 2px solid rgba(255,255,255,.4);
+      color: rgba(255,255,255,.8);
+      border-radius: var(--radius-sm);
+      padding: 6px 14px;
+      font-family: var(--font);
+      font-size: .85rem;
+      cursor: pointer;
+      margin-left: 18px;
+      min-height: 44px; /* accessibility: touch target */
+      min-width: 44px;
+      transition: background .2s, border-color .2s;
+    }
+
+    #reset-btn:hover, #reset-btn:focus-visible {
+      background: rgba(255,255,255,.15);
+      border-color: rgba(255,255,255,.8);
+      outline: 3px solid var(--gold);
+    }
+
+    /* ============================================================
+       MAIN LAYOUT
+    ============================================================ */
+    #app {
+      max-width: 860px;
+      margin: 0 auto;
+      padding: 28px 20px 60px;
+    }
+
+    /* ============================================================
+       OWL MASCOT + SPEECH BUBBLE
+    ============================================================ */
+    #owl-section {
+      display: flex;
+      align-items: flex-start;
+      gap: 20px;
+      margin-bottom: 26px;
+      background: var(--gold-light);
+      border: 2px solid var(--gold);
+      border-radius: var(--radius);
+      padding: 18px 22px;
+    }
+
+    #owl-svg-wrap {
+      flex-shrink: 0;
+      width: 80px;
+      height: 80px;
+    }
+
+    #owl-bubble {
+      flex: 1;
+      background: var(--white);
+      border-radius: var(--radius);
+      border: 2px solid var(--gold);
+      padding: 14px 18px;
+      font-size: 1.05rem;
+      position: relative;
+      box-shadow: var(--shadow-card);
+    }
+
+    #owl-bubble::before {
+      content: '';
+      position: absolute;
+      left: -14px;
+      top: 22px;
+      border: 7px solid transparent;
+      border-right-color: var(--gold);
+    }
+
+    #owl-bubble::after {
+      content: '';
+      position: absolute;
+      left: -10px;
+      top: 24px;
+      border: 5px solid transparent;
+      border-right-color: var(--white);
+    }
+
+    #owl-text { font-size: 1.05rem; line-height: 1.55; }
+
+    /* ============================================================
+       SCENARIO CARD
+    ============================================================ */
+    #scenario-wrap {
+      background: var(--white);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow-card);
+      overflow: hidden;
+      margin-bottom: 18px;
+    }
+
+    #scenario-type-bar {
+      background: var(--blue-deep);
+      color: var(--white);
+      padding: 10px 22px;
+      font-size: .9rem;
+      font-weight: 700;
+      letter-spacing: .5px;
+      text-transform: uppercase;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    #scenario-header {
+      background: var(--blue-light);
+      border-bottom: 2px solid var(--grey-light);
+      padding: 14px 22px;
+    }
+
+    .header-row {
+      display: flex;
+      gap: 6px;
+      align-items: baseline;
+      margin-bottom: 4px;
+    }
+
+    .header-label {
+      font-weight: 700;
+      font-size: .95rem;
+      color: var(--grey-mid);
+      min-width: 72px;
+    }
+
+    .header-value {
+      font-size: 1rem;
+      color: var(--blue-deep);
+    }
+
+    /* Clickable red-flag elements */
+    .clickable-flag {
+      cursor: pointer;
+      border-radius: 4px;
+      padding: 1px 4px;
+      border-bottom: 2px dashed var(--blue-mid);
+      transition: background .15s;
+    }
+
+    .clickable-flag:hover, .clickable-flag:focus-visible {
+      background: var(--blue-light);
+      outline: 2px solid var(--blue-mid);
+    }
+
+    .clickable-flag.correct {
+      background: #d4ffd4;
+      border-bottom: 2px solid var(--sage);
+      color: var(--sage);
+      font-weight: 700;
+      animation: popIn .3s ease;
+    }
+
+    .clickable-flag.wrong {
+      background: var(--red-light);
+      border-bottom: 2px solid var(--red-scam);
+      animation: shakeIt .4s ease;
+    }
+
+    @keyframes popIn {
+      0%   { transform: scale(1); }
+      50%  { transform: scale(1.06); }
+      100% { transform: scale(1); }
+    }
+
+    @keyframes shakeIt {
+      0%,100% { transform: translateX(0); }
+      20%     { transform: translateX(-5px); }
+      40%     { transform: translateX(5px); }
+      60%     { transform: translateX(-4px); }
+      80%     { transform: translateX(4px); }
+    }
+
+    #scenario-body {
+      padding: 22px;
+      font-size: 1.05rem;
+      line-height: 1.7;
+    }
+
+    /* Simulated link */
+    .sim-link {
+      color: var(--blue-mid);
+      text-decoration: underline;
+      cursor: pointer;
+      padding: 1px 4px;
+      border-radius: 4px;
+      transition: background .15s;
+    }
+
+    .sim-link:hover, .sim-link:focus-visible {
+      background: var(--blue-light);
+      outline: 2px solid var(--blue-mid);
+    }
+
+    /* ============================================================
+       BROWSER STATUS BAR
+    ============================================================ */
+    #status-bar {
+      background: #2b2b2b;
+      color: #b8ffb8;
+      font-family: 'Courier New', monospace;
+      font-size: .88rem;
+      padding: 8px 18px;
+      border-radius: 0 0 var(--radius) var(--radius);
+      min-height: 38px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    #status-bar .status-label {
+      color: #aaa;
+      font-size: .8rem;
+      flex-shrink: 0;
+    }
+
+    #status-url {
+      word-break: break-all;
+      transition: color .2s;
+    }
+
+    #status-url.suspicious { color: #ff8888; }
+    #status-url.safe       { color: #88ff88; }
+
+    /* ============================================================
+       ACTION BUTTONS
+    ============================================================ */
+    #action-section {
+      display: flex;
+      gap: 18px;
+      margin-bottom: 20px;
+    }
+
+    .action-btn {
+      flex: 1;
+      min-height: 64px; /* accessibility */
+      border: none;
+      border-radius: var(--radius);
+      font-family: var(--font);
+      font-size: 1.15rem;
+      font-weight: 700;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      box-shadow: var(--shadow-card);
+      transition: transform .15s, box-shadow .15s, opacity .2s;
+    }
+
+    .action-btn:disabled {
+      opacity: .38;
+      cursor: not-allowed;
+      transform: none !important;
+      box-shadow: none;
+    }
+
+    .action-btn:not(:disabled):hover, .action-btn:not(:disabled):focus-visible {
+      transform: translateY(-3px);
+      box-shadow: var(--shadow-soft);
+    }
+
+    .action-btn:focus-visible { outline: 3px solid var(--gold); outline-offset: 3px; }
+
+    #keep-btn {
+      background: var(--sage);
+      color: var(--white);
+    }
+
+    #delete-btn {
+      background: var(--red-scam);
+      color: var(--white);
+    }
+
+    /* ============================================================
+       INSTRUCTION ROW
+    ============================================================ */
+    #instruction-row {
+      background: var(--gold-light);
+      border: 2px dashed var(--gold);
+      border-radius: var(--radius-sm);
+      padding: 12px 18px;
+      font-size: 1rem;
+      color: var(--blue-deep);
+      margin-bottom: 20px;
+      text-align: center;
+    }
+
+    /* ============================================================
+       WELCOME SCREEN
+    ============================================================ */
+    #welcome-screen {
+      text-align: center;
+      padding: 30px 20px;
+    }
+
+    #welcome-screen h2 {
+      font-size: 2rem;
+      color: var(--blue-deep);
+      margin-bottom: 16px;
+    }
+
+    #welcome-screen p {
+      font-size: 1.1rem;
+      max-width: 600px;
+      margin: 0 auto 22px;
+      color: var(--grey-mid);
+    }
+
+    #start-btn {
+      background: var(--blue-deep);
+      color: var(--white);
+      border: none;
+      border-radius: var(--radius);
+      font-family: var(--font);
+      font-size: 1.2rem;
+      font-weight: 700;
+      padding: 18px 44px;
+      cursor: pointer;
+      min-height: 64px;
+      min-width: 200px;
+      box-shadow: var(--shadow-soft);
+      transition: transform .15s, box-shadow .15s;
+    }
+
+    #start-btn:hover, #start-btn:focus-visible {
+      transform: translateY(-3px);
+      box-shadow: 0 8px 24px rgba(0,0,0,.18);
+      outline: 3px solid var(--gold);
+    }
+
+    /* ============================================================
+       NEXT SCENARIO BUTTON
+    ============================================================ */
+    #next-btn {
+      display: none;
+      width: 100%;
+      min-height: 64px;
+      background: var(--blue-deep);
+      color: var(--white);
+      border: none;
+      border-radius: var(--radius);
+      font-family: var(--font);
+      font-size: 1.15rem;
+      font-weight: 700;
+      cursor: pointer;
+      box-shadow: var(--shadow-card);
+      transition: transform .15s, box-shadow .15s;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+
+    #next-btn.visible {
+      display: flex;
+    }
+
+    #next-btn:hover, #next-btn:focus-visible {
+      transform: translateY(-3px);
+      box-shadow: var(--shadow-soft);
+      outline: 3px solid var(--gold);
+    }
+
+    /* ============================================================
+       FEEDBACK BANNER
+    ============================================================ */
+    #feedback-banner {
+      display: none;
+      border-radius: var(--radius-sm);
+      padding: 14px 18px;
+      margin-bottom: 18px;
+      font-size: 1rem;
+      font-weight: 700;
+    }
+
+    #feedback-banner.correct {
+      background: #d4ffd4;
+      border: 2px solid var(--sage);
+      color: var(--sage);
+      display: block;
+    }
+
+    #feedback-banner.incorrect {
+      background: var(--red-light);
+      border: 2px solid var(--red-scam);
+      color: var(--red-scam);
+      display: block;
+    }
+
+    /* ============================================================
+       COMPLETION MODAL
+    ============================================================ */
+    #modal-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(10, 25, 47, .75);
+      z-index: 200;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+
+    #modal-overlay.visible { display: flex; }
+
+    #modal-box {
+      background: var(--white);
+      border-radius: var(--radius);
+      max-width: 560px;
+      width: 100%;
+      padding: 36px;
+      box-shadow: 0 12px 48px rgba(0,0,0,.25);
+      text-align: center;
+      animation: slideUp .4s ease;
+      /* FIX: allow modal to scroll when content is taller than viewport */
+      max-height: 90vh;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch; /* smooth scroll on iOS */
+    }
+
+    @keyframes slideUp {
+      from { transform: translateY(40px); opacity: 0; }
+      to   { transform: translateY(0);    opacity: 1; }
+    }
+
+    #modal-box h2 { font-size: 1.8rem; color: var(--blue-deep); margin-bottom: 12px; }
+    #modal-box p  { font-size: 1.05rem; color: var(--grey-mid); margin-bottom: 22px; }
+
+    #modal-shields {
+      display: flex;
+      justify-content: center;
+      gap: 12px;
+      margin-bottom: 24px;
+    }
+
+    #name-field {
+      width: 100%;
+      padding: 14px 16px;
+      font-family: var(--font);
+      font-size: 1.05rem;
+      border: 2px solid var(--grey-light);
+      border-radius: var(--radius-sm);
+      margin-bottom: 18px;
+      color: var(--blue-deep);
+    }
+
+    #name-field:focus {
+      outline: 3px solid var(--blue-mid);
+      border-color: var(--blue-mid);
+    }
+
+    .modal-btn {
+      width: 100%;
+      min-height: 60px;
+      border: none;
+      border-radius: var(--radius);
+      font-family: var(--font);
+      font-size: 1.1rem;
+      font-weight: 700;
+      cursor: pointer;
+      margin-bottom: 12px;
+      transition: transform .15s, box-shadow .15s;
+    }
+
+    .modal-btn:hover, .modal-btn:focus-visible {
+      transform: translateY(-2px);
+      box-shadow: var(--shadow-soft);
+      outline: 3px solid var(--gold);
+    }
+
+    #cert-btn  { background: var(--gold); color: var(--blue-deep); }
+    #again-btn { background: var(--blue-deep); color: var(--white); }
+
+    /* Hidden QR container removed — QR code feature not used */
+
+    /* ============================================================
+       PROGRESS DOTS
+    ============================================================ */
+    #progress-row {
+      display: flex;
+      gap: 10px;
+      justify-content: center;
+      margin-bottom: 22px;
+    }
+
+    .prog-dot {
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: var(--grey-light);
+      border: 2px solid var(--grey-mid);
+      transition: background .3s;
+    }
+
+    .prog-dot.done   { background: var(--sage); border-color: var(--sage); }
+    .prog-dot.active { background: var(--gold); border-color: var(--gold); transform: scale(1.3); }
+
+    /* ============================================================
+       SCENARIO COUNTER
+    ============================================================ */
+    #scenario-counter {
+      font-size: .95rem;
+      color: var(--grey-mid);
+      text-align: center;
+      margin-bottom: 14px;
+    }
+
+    /* ============================================================
+       RESPONSIVE
+    ============================================================ */
+    @media (max-width: 600px) {
+      #top-bar h1 { font-size: 1.2rem; }
+      #action-section { flex-direction: column; }
+      #owl-section { flex-direction: column; align-items: center; }
+      #owl-bubble::before, #owl-bubble::after { display: none; }
+    }
+
+    /* ============================================================
+       FOCUS VISIBLE GLOBAL
+    ============================================================ */
+    :focus-visible {
+      outline: 3px solid var(--gold);
+      outline-offset: 2px;
+    }
+
+    /* ============================================================
+       AI FEATURE STYLES
+    ============================================================ */
+
+    /* AI sparkle badge — shown on AI-generated content for transparency */
+    .ai-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      background: linear-gradient(135deg, #6c3fc5, #3a8fd4);
+      color: #fff;
+      font-size: .78rem;
+      font-weight: 700;
+      padding: 3px 10px;
+      border-radius: 20px;
+      letter-spacing: .4px;
+      vertical-align: middle;
+      margin-left: 8px;
+      white-space: nowrap;
+    }
+
+    @keyframes sparkleRotate {
+      0%   { transform: rotate(0deg) scale(1); }
+      50%  { transform: rotate(180deg) scale(1.3); }
+      100% { transform: rotate(360deg) scale(1); }
+    }
+    .ai-badge .sparkle {
+      display: inline-block;
+      animation: sparkleRotate 3s linear infinite;
+    }
+
+    /* Endless mode call-to-action panel */
+    #endless-section {
+      display: none;
+      background: linear-gradient(135deg, #1a1060 0%, #2e6da4 100%);
+      border-radius: var(--radius);
+      padding: 26px 28px;
+      text-align: center;
+      color: var(--white);
+      margin-bottom: 20px;
+    }
+
+    #endless-section.visible { display: block; }
+
+    #endless-section h3 {
+      font-size: 1.4rem;
+      margin-bottom: 8px;
+    }
+
+    #endless-section p {
+      font-size: 1rem;
+      opacity: .85;
+      margin-bottom: 18px;
+    }
+
+    #endless-btn {
+      background: var(--gold);
+      color: var(--blue-deep);
+      border: none;
+      border-radius: var(--radius);
+      font-family: var(--font);
+      font-size: 1.1rem;
+      font-weight: 700;
+      padding: 16px 36px;
+      cursor: pointer;
+      min-height: 56px;
+      min-width: 220px;
+      transition: transform .15s, box-shadow .15s;
+      box-shadow: 0 4px 16px rgba(0,0,0,.25);
+    }
+
+    #endless-btn:hover, #endless-btn:focus-visible {
+      transform: translateY(-3px);
+      box-shadow: 0 8px 24px rgba(0,0,0,.3);
+      outline: 3px solid white;
+    }
+
+    /* AI disclaimer strip — shown above every AI scenario */
+    .ai-disclaimer {
+      background: #eef0ff;
+      border: 1.5px solid #b0baf8;
+      border-radius: var(--radius-sm);
+      padding: 9px 14px;
+      font-size: .88rem;
+      color: #3040a0;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 14px;
+    }
+
+    /* AI-generated scenario type bar */
+    #scenario-type-bar.ai-generated {
+      background: linear-gradient(90deg, #1a1060, #2e6da4);
+    }
+
+    /* Caregiver guide output panel */
+    #caregiver-guide-output {
+      display: none;
+      background: var(--sage-light);
+      border: 2px solid var(--sage);
+      border-radius: var(--radius);
+      padding: 20px 22px;
+      text-align: left;
+      margin-top: 14px;
+    }
+
+    #caregiver-guide-output.visible { display: block; }
+
+    #caregiver-guide-output h3 {
+      font-size: 1.1rem;
+      color: var(--sage);
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    #caregiver-guide-output p {
+      font-size: .98rem;
+      color: var(--blue-deep);
+      margin-bottom: 10px;
+      line-height: 1.6;
+    }
+
+    #caregiver-guide-output .tip-box {
+      background: var(--white);
+      border-left: 4px solid var(--sage);
+      border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+      padding: 10px 14px;
+      margin-top: 10px;
+      font-size: .95rem;
+    }
+
+    #guide-btn  { background: var(--sage); color: var(--white); }
+
+    /* Spinner for AI "thinking" state */
+    .ai-loading {
+      display: inline-block;
+      width: 18px;
+      height: 18px;
+      border: 3px solid rgba(255,255,255,.35);
+      border-top-color: white;
+      border-radius: 50%;
+      animation: spin .7s linear infinite;
+      vertical-align: middle;
+      margin-right: 6px;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Full-page AI loading spinner (shown while aiService fetches a scenario) */
+    #aiLoadingSpinner {
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 48px 24px;
+      text-align: center;
+      background: var(--white);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow-card);
+      margin-bottom: 18px;
+    }
+
+    .ai-loading-spinner {
+      width: 52px;
+      height: 52px;
+      border: 5px solid #e2e8f0;
+      border-top: 5px solid var(--blue-mid);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin-bottom: 18px;
+    }
+
+    #aiLoadingSpinner p {
+      font-size: 1.05rem;
+      color: var(--grey-mid);
+      margin: 0;
+    }
+
+    /* Fallback badge — shown when AI is unavailable and built-in scenarios are used */
+    .fallback-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      background: var(--blue-mid);
+      color: #fff;
+      font-size: .78rem;
+      font-weight: 700;
+      padding: 3px 10px;
+      border-radius: 20px;
+      letter-spacing: .4px;
+      vertical-align: middle;
+      margin-left: 8px;
+      white-space: nowrap;
+    }
+
+    /* End endless practice button */
+    #end-endless-btn {
+      display: none;
+      width: 100%;
+      min-height: 60px;
+      background: var(--sage);
+      color: var(--white);
+      border: none;
+      border-radius: var(--radius);
+      font-family: var(--font);
+      font-size: 1.1rem;
+      font-weight: 700;
+      cursor: pointer;
+      box-shadow: var(--shadow-card);
+      transition: transform .15s, box-shadow .15s;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      margin-bottom: 20px;
+      margin-top: 8px;
+    }
+
+    #end-endless-btn:not([hidden]) { display: flex; }
+
+    #end-endless-btn:hover, #end-endless-btn:focus-visible {
+      transform: translateY(-3px);
+      box-shadow: var(--shadow-soft);
+      outline: 3px solid var(--gold);
+    }
+
+    /* Name field inside the caregiver guide section */
+    #guide-name-wrap {
+      display: none;
+      margin-bottom: 14px;
+      text-align: left;
+    }
+
+    #guide-name-wrap.visible { display: block; }
+
+    #guide-name-field {
+      width: 100%;
+      padding: 12px 14px;
+      font-family: var(--font);
+      font-size: 1rem;
+      border: 2px solid var(--grey-light);
+      border-radius: var(--radius-sm);
+      margin-top: 6px;
+      color: var(--blue-deep);
+    }
+
+    #guide-name-field:focus {
+      outline: 3px solid var(--sage);
+      border-color: var(--sage);
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ============================================================
+       TOP BAR
+  ============================================================ -->
+  <header id="top-bar" role="banner">
+    <h1><span class="fish-icon" aria-hidden="true">🎣</span> Fish the Phish</h1>
+    <nav aria-label="Progress" style="display:flex;align-items:center;">
+      <div id="shields-row" role="list" aria-label="Shields earned"></div>
+      <button id="reset-btn" aria-label="Reset all game progress">Reset Progress</button>
+    </nav>
+  </header>
+
+  <!-- ============================================================
+       MAIN APPLICATION
+  ============================================================ -->
+  <main id="app" role="main">
+
+    <!-- WELCOME SCREEN -->
+    <div id="welcome-screen" aria-live="polite">
+      <div id="owl-section" style="margin-bottom:24px;">
+        <div id="owl-svg-wrap" aria-hidden="true"><!-- SVG injected by JS --></div>
+        <div id="owl-bubble" role="status" aria-live="polite">
+          <p id="owl-text">Hello! I am Professor Hoot, your cybersecurity guide. I will help you learn how to spot sneaky scam messages called <strong>phishing</strong>. Are you ready to play?</p>
+        </div>
+      </div>
+      <h2>Welcome to Fish the Phish!</h2>
+      <p>You will see 5 messages – some real, some scams. Tap on anything that looks suspicious, then decide to <strong>Keep</strong> or <strong>Delete</strong> the message. Earn a 🛡️ shield for every correct answer!</p>
+      <button id="start-btn">🎮 Start the Game</button>
+    </div>
+
+    <!-- GAME SCREEN (hidden until started) -->
+    <div id="game-screen" hidden>
+      <div id="scenario-counter" aria-live="polite"></div>
+      <div id="progress-row" role="list" aria-label="Scenario progress"></div>
+
+      <!-- OWL -->
+      <div id="owl-game-section" class="owl-section" style="display:flex;align-items:flex-start;gap:20px;margin-bottom:26px;background:var(--gold-light);border:2px solid var(--gold);border-radius:var(--radius);padding:18px 22px;">
+        <div id="owl-svg-game-wrap" aria-hidden="true"></div>
+        <div id="owl-bubble-game" style="flex:1;background:var(--white);border-radius:var(--radius);border:2px solid var(--gold);padding:14px 18px;font-size:1.05rem;position:relative;box-shadow:var(--shadow-card);">
+          <p id="owl-game-text" role="status" aria-live="polite">Read the message below carefully. Tap on anything that looks suspicious!</p>
+        </div>
+      </div>
+
+      <!-- INSTRUCTION -->
+      <div id="instruction-row" aria-label="Game instruction">
+        👆 <strong>Tap on something suspicious</strong> in the message below — then decide to Keep or Delete it.
+      </div>
+
+      <!-- AI LOADING SPINNER — visible while aiService fetches a scenario -->
+      <div id="aiLoadingSpinner" role="status" aria-live="polite" aria-label="Generating scenario">
+        <div class="ai-loading-spinner" aria-hidden="true"></div>
+        <p>Generating your practice scenario…</p>
+      </div>
+
+      <!-- SCENARIO CARD -->
+      <div id="scenario-wrap" role="region" aria-label="Message to review">
+        <div id="scenario-type-bar">
+          <span id="scenario-type-icon" aria-hidden="true"></span>
+          <span id="scenario-type-label"></span>
+        </div>
+        <div id="scenario-header" role="group" aria-label="Message headers"></div>
+        <div id="scenario-body"></div>
+      </div>
+
+      <!-- STATUS BAR -->
+      <div id="status-bar" role="status" aria-live="polite" aria-label="Browser link preview">
+        <span class="status-label">Link preview:</span>
+        <span id="status-url">Hover over a link to see where it really goes</span>
+      </div>
+
+      <!-- FEEDBACK -->
+      <div id="feedback-banner" role="alert" aria-live="assertive"></div>
+
+      <!-- ACTION BUTTONS -->
+      <div id="action-section">
+        <button class="action-btn" id="keep-btn" disabled aria-disabled="true">
+          ✅ Keep Message (It's Safe)
+        </button>
+        <button class="action-btn" id="delete-btn" disabled aria-disabled="true">
+          🗑️ Delete Message (It's a Scam)
+        </button>
+      </div>
+
+      <!-- NEXT BUTTON -->
+      <button id="next-btn" aria-label="Proceed to next scenario">
+        ➡️ Next Message
+      </button>
+
+      <!-- END ENDLESS PRACTICE button — only visible during endless mode -->
+      <button id="end-endless-btn" aria-label="End practice and view your results" hidden>
+        🏁 End Practice &amp; Get My Certificate
+      </button>
+    </div>
+
+  </main>
+
+  <!-- ============================================================
+       COMPLETION MODAL
+  ============================================================ -->
+  <div id="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="modal-title" aria-describedby="modal-desc">
+    <div id="modal-box">
+      <h2 id="modal-title">🎉 Well Done!</h2>
+      <p id="modal-desc"></p>
+      <div id="modal-shields" aria-hidden="true"></div>
+      <label for="name-field" style="display:block;text-align:left;font-weight:700;margin-bottom:6px;font-size:1rem;">
+        Your name (for the certificate):
+      </label>
+      <input type="text" id="name-field" placeholder="Enter your name" autocomplete="name" aria-required="true" maxlength="80" />
+      <button class="modal-btn" id="cert-btn">📄 Download My Certificate</button>
+
+      <!-- SHA-256 verification explanation -->
+      <div style="background:#f0f4ff;border:1.5px solid #b0baf8;border-radius:var(--radius-sm);padding:14px 16px;margin-bottom:14px;text-align:left;">
+        <p style="font-weight:700;color:var(--blue-deep);font-size:.95rem;margin-bottom:6px;">🔐 About your certificate hash</p>
+        <p style="font-size:.88rem;color:var(--grey-mid);line-height:1.55;">
+          Your certificate contains a <strong>SHA-256 hash</strong> — a unique 64-character digital fingerprint of the entire PDF file. If even a single pixel of the certificate were changed, the hash would be completely different. This makes the certificate tamper-evident and uniquely yours.
+        </p>
+      </div>
+
+      <!-- ========================================================
+           AI CAREGIVER SUMMARY BUTTON
+           Generates a plain-language family discussion guide
+      ======================================================== -->
+      <button class="modal-btn" id="guide-btn">
+        💬 Generate Family Discussion Guide
+      </button>
+
+      <!-- Name field shown when guide btn is clicked -->
+      <div id="guide-name-wrap" role="group" aria-label="Name for family discussion guide">
+        <label for="guide-name-field" style="font-weight:700;font-size:.98rem;color:var(--blue-deep);">
+          Who is this guide for? (e.g. "Mary" or "Mum")
+        </label>
+        <input type="text" id="guide-name-field" placeholder="Enter their name" autocomplete="off" maxlength="60" />
+        <button class="modal-btn" id="guide-generate-btn" style="background:var(--sage);color:white;margin-top:10px;min-height:52px;font-size:1rem;">
+          ✦ Generate Guide for This Person
+        </button>
+      </div>
+
+      <!-- Guide output panel (hidden until generated) -->
+      <div id="caregiver-guide-output" role="region" aria-label="Family discussion guide" aria-live="polite">
+        <h3>📋 Family Discussion Guide
+          <span class="ai-badge" aria-label="AI generated content">
+            <span class="sparkle" aria-hidden="true">✦</span> AI-Generated
+          </span>
+        </h3>
+        <div id="guide-content"></div>
+        <p style="font-size:.82rem;color:var(--grey-mid);margin-top:14px;font-style:italic;">
+          AI-generated content is for practice only. No personal data is sent externally.
+        </p>
+      </div>
+
+      <!-- ========================================================
+           AI ENDLESS PRACTICE — lives inside the modal so it's
+           always reachable, never hidden behind the overlay
+      ======================================================== -->
+      <div id="endless-modal-section" style="background:linear-gradient(135deg,#1a1060,#2e6da4);border-radius:var(--radius);padding:20px;margin-bottom:12px;color:white;">
+        <p style="font-size:1rem;font-weight:700;margin-bottom:6px;">Want more practice?</p>
+        <p style="font-size:.92rem;opacity:.85;margin-bottom:14px;">Try AI-generated bonus scenarios tailored to the ones you found tricky.</p>
+        <button class="modal-btn" id="endless-btn" style="background:var(--gold);color:var(--blue-deep);margin-bottom:0;">
+          ✨ Try Endless Practice (AI-Generated)
+        </button>
+        <p style="font-size:.78rem;margin-top:10px;opacity:.7;">AI-generated content is for practice only</p>
+        <p style="font-size:.76rem;margin-top:4px;opacity:.6;">Powered by AI. Internet connection required.</p>
+      </div>
+
+      <button class="modal-btn" id="again-btn">🔄 Play Again</button>
+    </div>
+  </div>
+
+  <!-- (QR code container removed) -->
+
+  <!-- ============================================================
+       SCRIPT — IIFE-encapsulated game state
+       SECURITY: Score and state are in a closure; console tampering
+       is detected and logged.
+  ============================================================ -->
+  <script>
+  /* ==============================================================
+     SECURITY: Force HTTPS in production (skip on file:// for dev)
+  ============================================================== */
+  (function enforceHTTPS() {
+    if (window.location.protocol === 'http:' &&
+        window.location.hostname !== 'localhost' &&
+        window.location.hostname !== '127.0.0.1' &&
+        window.location.hostname !== '') {
+      window.location.replace(window.location.href.replace('http:', 'https:'));
+    }
+  })();
+
+  /* ==============================================================
+     SECURITY: Console tampering detection
+     Logs a warning if devtools tries to overwrite console.
+  ============================================================== */
+  (function protectConsole() {
+    const _warn = console.warn.bind(console);
+    try {
+      Object.defineProperty(window, '_gameScore', {
+        get() { _warn('[Fish the Phish] ⚠️ Tampering attempt detected. Score is protected.'); return undefined; },
+        set() { _warn('[Fish the Phish] ⚠️ Tampering attempt detected. Score cannot be modified.'); }
+      });
+    } catch(e) { /* non-critical */ }
+  })();
+
+  /* ==============================================================
+     MAIN GAME IIFE — ALL state is in this closure
+  ============================================================== */
+  const Game = (function() {
+    'use strict';
+
+    /* ----------------------------------------------------------
+       HOMOGLYPH DETECTION UTILITY
+       Checks sender/link strings for common look-alike substitutions
+    ---------------------------------------------------------- */
+    function detectHomoglyphs(str) {
+      const checks = [
+        { pattern: /paypa1|amaz0n|g00gle|micros0ft|app1e|netfl1x/i, desc: 'digit-for-letter substitution' },
+        { pattern: /rn(?=[a-z])/,   desc: 'rn/m lookalike' },
+        { pattern: /[а-яА-ЯёЁ]/,   desc: 'Cyrillic character' },
+        { pattern: /\.(ru|cn|tk|xyz|top)([/?]|$)/i, desc: 'suspicious TLD' },
+        { pattern: /security-verify|login-secure|account-verify/i, desc: 'phishing path pattern' }
+      ];
+      const found = [];
+      checks.forEach(c => { if (c.pattern.test(str)) found.push(c.desc); });
+      return found;
+    }
+
+    /* ==============================================================
+       PROXY CONFIGURATION
+       ---------------------------------------------------------------
+       Set PROXY_URL to your deployed Cloudflare Worker URL.
+       Example: 'https://fish-the-phish.your-name.workers.dev'
+
+       Steps to deploy:
+         1. Copy worker.js to a new Cloudflare Worker
+         2. Run: npx wrangler secret put OPENAI_API_KEY
+         3. Run: npx wrangler deploy
+         4. Paste the deployed URL below — no trailing slash
+    ============================================================== */
+   const PROXY_URL = 'https://fish-the-phish.francis-fyp.workers.dev';
+
+    /* ==============================================================
+       RESPONSE TRANSFORMER
+       ---------------------------------------------------------------
+       Maps the Cloudflare Worker / OpenAI response shape to the
+       internal game scenario shape that _renderScenarioData expects.
+
+       Worker / fallback response shape:
+         { type, sender, subject, message, linkText,
+           linkHoverReveal, correctFlag, explanation,
+           source, isAIGenerated }
+
+       correctFlag values: 'sender' | 'link' | 'urgency' | 'phone' | 'none'
+
+       @param  {Object} raw  raw proxy / fallback response
+       @returns {Object}     game scenario object
+    ============================================================== */
+    function _transformAIResponse(raw) {
+      const id = (typeof _aiIdCounter !== 'undefined') ? ++_aiIdCounter : Date.now();
+
+      const typeMap = { email: 'email', sms: 'sms', alert: 'alert' };
+      const type    = typeMap[raw.type] || 'email';
+      const typeLabelMap = {
+        email: '📧 Email',
+        sms:   '📱 Text Message',
+        alert: '⚠️ Security Pop-up'
+      };
+
+      const isScam = (raw.correctFlag !== 'none');
+      let sender   = raw.sender || 'Unknown Sender';
+      let body     = raw.message || '';
+      let links    = [];
+      let redFlag  = null;
+
+      switch (raw.correctFlag) {
+        case 'sender':
+          redFlag = 'ai-sender';
+          sender  = `<span class="clickable-flag" data-flag="ai-sender" tabindex="0" role="button"
+                        aria-label="Click if you think the sender address is suspicious"
+                      >${_escHtml(raw.sender)}</span>`;
+          break;
+
+        case 'link':
+          redFlag = 'ai-link';
+          if (raw.linkText && raw.linkHoverReveal) {
+            links.push({ text: raw.linkText, href: raw.linkHoverReveal, isRedFlag: true, flagId: 'ai-link' });
+          }
+          break;
+
+        case 'urgency': {
+          redFlag = 'ai-urgency';
+          const urgencyRx = /((?:URGENT|WARNING|ALERT|immediately|right now|as soon as possible|within \d+ hours?|expire[sd]?|suspend(?:ed)?|block(?:ed)?|compromised?)[^.!?\n]*[.!?]?)/i;
+          const um = body.match(urgencyRx);
+          if (um) {
+            body = body.replace(um[0],
+              `<span class="clickable-flag" data-flag="ai-urgency" tabindex="0" role="button"
+                  aria-label="Click if you think this phrase is suspicious"
+                >${um[0]}</span>`);
+          } else {
+            const parts = body.split(/(?<=[.!?])\s+/);
+            const last  = parts.pop() || '';
+            parts.push(
+              `<span class="clickable-flag" data-flag="ai-urgency" tabindex="0" role="button"
+                  aria-label="Click if you think this phrase is suspicious"
+                >${last}</span>`
+            );
+            body = parts.join(' ');
+          }
+          if (raw.linkText && raw.linkHoverReveal) {
+            links.push({ text: raw.linkText, href: raw.linkHoverReveal, isRedFlag: false });
+          }
+          break;
+        }
+
+        case 'phone': {
+          redFlag = 'ai-phone';
+          const phoneRx = /(\+?[\d][\d\s\-().]{6,}[\d])/;
+          if (phoneRx.test(body)) {
+            body = body.replace(phoneRx,
+              `<span class="clickable-flag" data-flag="ai-phone" tabindex="0" role="button"
+                  aria-label="Click if you think this phone number is suspicious"
+                >$1</span>`);
+          } else {
+            redFlag = 'ai-sender';
+            sender  = `<span class="clickable-flag" data-flag="ai-sender" tabindex="0" role="button"
+                          aria-label="Click if you think the sender is suspicious"
+                        >${_escHtml(raw.sender)}</span>`;
+          }
+          break;
+        }
+
+        default:
+          redFlag = null;
+          if (raw.linkText && raw.linkHoverReveal) {
+            links.push({ text: raw.linkText, href: raw.linkHoverReveal, isRedFlag: false });
+          }
+          break;
+      }
+
+      const exp = raw.explanation || 'Always be cautious with unexpected messages.';
+
+      return {
+        id,
+        type,
+        typeLabel:          typeLabelMap[type] || '📧 Email',
+        sender,
+        subject:            raw.subject || null,
+        body,
+        links,
+        redFlag,
+        isScam,
+        owlHint:            `Look carefully at this message — can you spot what is wrong? ${exp}`,
+        owlCorrect:         `Great catch! ${exp}`,
+        owlDecisionCorrect: `Well done! ${exp}`,
+        owlDecisionWrong:   `This was ${isScam ? 'a scam' : 'a safe message'}! ${exp}`,
+        aiGenerated:        true,
+        isAIGenerated:      raw.isAIGenerated !== false,
+        source:             raw.source || 'ai'
+      };
+    }
+
+    /** Minimal HTML escaper for untrusted sender strings */
+    function _escHtml(str) {
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+
+    /* Running ID counter for AI-generated scenarios */
+    let _aiIdCounter = 200;
+
+    /* ==============================================================
+       AI SERVICE MODULE
+       ---------------------------------------------------------------
+       Plain object with async methods that call the Cloudflare Worker
+       proxy. The proxy is the ONLY place the OpenAI API key lives.
+       No API keys ever appear in this file.
+
+       API contract for generateScenario():
+       @returns {Promise<Object>} raw proxy response (pass through
+         _transformAIResponse before rendering — done in startNextAIScenario)
+
+       API contract for generateCaregiverReport(name, score, strengths, weakAreas):
+       @returns {Promise<string>} plain-language HTML report string
+
+       If the proxy is unreachable, both methods degrade gracefully to
+       built-in fallback content with no user-visible error.
+    ============================================================== */
+    const aiService = {
+      _previousTypes: [],
+      _isGenerating:  false,
+
+      /**
+       * Fetch one AI-generated scenario from the Cloudflare Worker proxy.
+       * Tracks previously seen scam types so the proxy can avoid repetition.
+       * Shows/hides #aiLoadingSpinner automatically.
+       *
+       * @returns {Promise<Object>} raw proxy response object:
+       *   { type, sender, subject, message, linkText, linkHoverReveal,
+       *     correctFlag, explanation, source, isAIGenerated }
+       */
+      async generateScenario() {
+        if (this._isGenerating) return null;
+        this._isGenerating = true;
+        this._showLoading(true);
+
+        try {
+          const response = await fetch(`${PROXY_URL}/api/generate-scenario`, {
+            method:  'POST',
+            headers: { 'Content-Type': 'application/json' },
+            /* Send only anonymised tracking data — no PII */
+            body: JSON.stringify({
+              previousTypes: this._previousTypes.slice(-5)
+            }),
+            signal: AbortSignal.timeout(12000)
+          });
+
+          if (!response.ok) {
+            throw new Error(`Proxy returned ${response.status}`);
+          }
+
+          const scenario = await response.json();
+
+          if (scenario.fallback) {
+            throw new Error('API failed, fallback returned');
+          }
+
+          /* Validate required fields */
+          const required = ['type', 'sender', 'message', 'correctFlag', 'explanation'];
+          const missing  = required.filter(f => !scenario[f]);
+          if (missing.length) throw new Error(`Missing fields: ${missing.join(', ')}`);
+
+          /* Track type to avoid repetition (sliding window of 20) */
+          this._previousTypes.push(scenario.correctFlag);
+          if (this._previousTypes.length > 20) this._previousTypes.shift();
+
+          return { ...scenario, source: 'ai', isAIGenerated: true };
+
+        } catch (error) {
+          (console.warn || console.log).call(console,
+            '[Fish the Phish] AI generation failed, using fallback:', error.message);
+          return this._getFallbackScenario();
+
+        } finally {
+          this._isGenerating = false;
+          this._showLoading(false);
+        }
+      },
+
+      /**
+       * Generate a personalised family conversation guide via the proxy.
+       * The player's name is substituted client-side AFTER the API call
+       * so no personal data is transmitted to the proxy.
+       *
+       * @param {string}   name       Player display name (inserted locally)
+       * @param {number}   score      Shields earned
+       * @param {string[]} strengths  Scenario types answered correctly
+       * @param {string[]} weakAreas  Scenario types answered incorrectly
+       * @returns {Promise<string>}   HTML string for the guide panel
+       */
+      async generateCaregiverReport(name, score, strengths, weakAreas) {
+        this._showLoading(true);
+
+        try {
+          const response = await fetch(`${PROXY_URL}/api/generate-caregiver-summary`, {
+            method:  'POST',
+            headers: { 'Content-Type': 'application/json' },
+            /* PRIVACY: name is included but the worker prompt uses "Your relative" —
+               the substitution below replaces it client-side regardless */
+            body: JSON.stringify({ name, score, strengths, weakAreas }),
+            signal: AbortSignal.timeout(12000)
+          });
+
+          if (!response.ok) {
+            throw new Error(`Proxy returned ${response.status}`);
+          }
+
+          const data = await response.json();
+
+          if (data.fallback) {
+            throw new Error('API failed, fallback returned');
+          }
+
+          const rawSummary  = (data.summary || '').trim();
+          if (!rawSummary) throw new Error('Empty response from proxy');
+
+          /* Insert first name client-side — personal data never left the browser */
+          const firstName   = (name || '').split(' ')[0] || name;
+          const personalised = rawSummary.replace(
+            /\bYour relative\b/gi,
+            `<strong>${_escHtml(firstName)}</strong>`
+          );
+
+          return `<p>${personalised}</p>
+            <p style="margin-top:12px;">Try playing again together as a family to reinforce these skills!</p>`;
+
+        } catch (error) {
+          (console.warn || console.log).call(console,
+            '[Fish the Phish] Caregiver report failed, using local template:', error.message);
+          return this._getFallbackCaregiverSummary(name, score, strengths, weakAreas);
+
+        } finally {
+          this._showLoading(false);
+        }
+      },
+
+      /**
+       * Built-in fallback scenarios used when the proxy is unreachable.
+       * Three Singapore-context scenarios in the same raw proxy shape.
+       * Selected randomly so repeat plays feel varied.
+       *
+       * @returns {Object} raw scenario object (needs _transformAIResponse)
+       */
+      _getFallbackScenario() {
+        const fallbacks = [
+          {
+            type:            'email',
+            sender:          'support@netf1ix.com',
+            subject:         'Your Netflix Payment Failed',
+            message:         'Dear Customer, your recent payment for Netflix was declined. To avoid service interruption, please update your billing information immediately.',
+            linkText:        'Update Payment',
+            linkHoverReveal: 'http://netflix.account-verify.ru/billing',
+            correctFlag:     'sender',
+            explanation:     'Look closely at the sender address. It says netf1ix with a number 1 instead of the letter L. Real Netflix emails come from @netflix.com.',
+            source:          'fallback',
+            isAIGenerated:   false
+          },
+          {
+            type:            'sms',
+            sender:          '+65 9123 4567',
+            subject:         '',
+            message:         'Mum, I dropped my phone in the toilet! This is my friend\'s number. Can you transfer me $500? I\'ll pay you back tonight.',
+            linkText:        null,
+            linkHoverReveal: null,
+            correctFlag:     'urgency',
+            explanation:     'Scammers pretend to be family members in trouble and create urgency so you do not verify. Always call your family member\'s real number to check.',
+            source:          'fallback',
+            isAIGenerated:   false
+          },
+          {
+            type:            'email',
+            sender:          'security@dbs-verify.tk',
+            subject:         'URGENT: Your DBS Account Has Been Locked',
+            message:         'Dear customer, multiple failed login attempts have been detected. Your account has been temporarily locked for security. Please verify your identity to restore access.',
+            linkText:        'Unlock Account',
+            linkHoverReveal: 'http://dbs.account-unlock.tk',
+            correctFlag:     'link',
+            explanation:     'The link goes to a website ending in .tk, not dbs.com.sg. Real DBS messages never use strange domain endings. Always access DBS through their official app or website.',
+            source:          'fallback',
+            isAIGenerated:   false
+          }
+        ];
+        return fallbacks[Math.floor(Math.random() * fallbacks.length)];
+      },
+
+      /**
+       * Built-in fallback caregiver summary used when the proxy is unreachable.
+       *
+       * @param {string}   name
+       * @param {number}   score
+       * @param {string[]} strengths
+       * @param {string[]} weakAreas
+       * @returns {string} HTML string
+       */
+      _getFallbackCaregiverSummary(name, score, strengths, weakAreas) {
+        const firstName    = (name || '').split(' ')[0] || name || 'Your family member';
+        const pct          = Math.round((score / 5) * 100);
+
+        let summaryLine;
+        if (score === 5) {
+          summaryLine = `<strong>${firstName}</strong> answered every question correctly — a perfect score! They are already thinking like a cybersecurity expert.`;
+        } else if (score >= 3) {
+          summaryLine = `<strong>${firstName}</strong> did really well, earning ${score} out of 5 shields (${pct}%). They show a solid understanding of phishing scams.`;
+        } else {
+          summaryLine = `<strong>${firstName}</strong> is building their awareness and earned ${score} out of 5 shields (${pct}%). A little more practice will help build confidence.`;
+        }
+
+        const areaLabels = {
+          sender:  'spotting fake sender addresses',
+          link:    'checking where links really go',
+          urgency: 'recognising urgent or scary language',
+          safe:    'identifying safe, legitimate messages'
+        };
+
+        let strengthLine = '';
+        if (strengths.length) {
+          const readable = strengths.map(a => areaLabels[a] || a).join(' and ');
+          strengthLine = `<p>💪 <strong>Strength:</strong> ${firstName} was particularly good at ${readable}.</p>`;
+        }
+
+        let weakTip = '';
+        const tipMap = {
+          urgency: { label: 'urgent or scary language',               tip: 'Practise saying: <em>"I\'m going to hang up and call you back on your real number"</em> whenever a message feels rushed.' },
+          sender:  { label: 'checking the sender address',            tip: 'Try reading sender addresses letter by letter together. Look for numbers hiding as letters (0 instead of O, 1 instead of L).' },
+          link:    { label: 'checking where links really go',         tip: 'Practise hovering over links on safe websites to see the preview bar. Remember: hover first, click second.' },
+          safe:    { label: 'recognising that some messages are safe', tip: 'It\'s okay to keep safe messages! Review real emails from known senders together.' }
+        };
+        if (weakAreas.length) {
+          const w = tipMap[weakAreas[0]] || { label: weakAreas[0], tip: 'Keep practising with more scenarios.' };
+          weakTip = `<p>🎯 <strong>Area to practise:</strong> ${firstName} found ${w.label} a little tricky.</p>
+            <div class="tip-box">💡 <strong>Conversation tip:</strong> ${w.tip}</div>`;
+        }
+
+        const closing = score < 5
+          ? `<p style="margin-top:12px;">Try playing again together — going through each scenario out loud helps build the habit of pausing before clicking.</p>`
+          : `<p style="margin-top:12px;">Keep the conversation going! Share one real-life scam example you have seen recently to reinforce what ${firstName} has learned.</p>`;
+
+        return `<p>${summaryLine}</p>${strengthLine}${weakTip}${closing}`;
+      },
+
+      /**
+       * Show or hide the full-screen AI loading spinner.
+       * Also hides the scenario card while loading to avoid flicker.
+       *
+       * @param {boolean} show
+       */
+      _showLoading(show) {
+        const spinner = document.getElementById('aiLoadingSpinner');
+        if (spinner) spinner.style.display = show ? 'flex' : 'none';
+      }
+    };
+
+    /* ----------------------------------------------------------
+       SCENARIOS DATA
+    ---------------------------------------------------------- */
+    const scenarios = [
+      {
+        id: 1,
+        type: 'sms',
+        typeLabel: '📱 Text Message',
+        sender: 'Grandson',
+        subject: null,
+        body: `Grandma, I'm in jail in Mexico. Please wire $2,000. <span class="clickable-flag" data-flag="urgent-phrase" tabindex="0" role="button" aria-label="Click if you think this phrase is suspicious">Don't tell Mom!</span> Call me at this number: 555-0199.`,
+        links: [],
+        redFlag: 'urgent-phrase',
+        isScam: true,
+        owlHint: 'Look for words that make you feel scared or rushed — scammers want to stop you from calling family first.',
+        owlCorrect: 'Perfect! Scammers create panic so you do not call family first. Always verify by calling their real number!',
+        owlDecisionCorrect: '🛡️ Excellent! That was a grandparent scam. Never wire money without verifying in person or by calling a number you already know.',
+        owlDecisionWrong: 'That one was a scam! The phrase "Don\'t tell Mom" is designed to stop you from checking with family — always verify first.'
+      },
+      {
+        id: 2,
+        type: 'alert',
+        typeLabel: '⚠️ Security Pop-up',
+        sender: 'Windows Security',
+        subject: null,
+        body: `VIRUS DETECTED! Your computer may be infected. Call Microsoft immediately at <span class="clickable-flag" data-flag="phone-number" tabindex="0" role="button" aria-label="Click if you think the phone number is suspicious">1-800-555-0199</span> to prevent data loss.`,
+        links: [],
+        redFlag: 'phone-number',
+        isScam: true,
+        owlHint: 'Real companies like Microsoft or Apple will NEVER put a phone number in a pop-up alert.',
+        owlCorrect: 'Excellent! Real Microsoft or Apple will NEVER put a phone number in a pop-up alert. If you call, scammers will take remote control of your computer!',
+        owlDecisionCorrect: '🛡️ Well done! Tech support pop-ups with phone numbers are always scams. Close the window with Alt+F4 or restart your computer.',
+        owlDecisionWrong: 'That was a scam pop-up! Real tech companies never ask you to call a number from a website alert.'
+      },
+      {
+        id: 3,
+        type: 'email',
+        typeLabel: '📧 Email',
+        sender: '<span class="clickable-flag" data-flag="sender-address" tabindex="0" role="button" aria-label="Click if you think the sender address is suspicious">service@paypa1.com</span>',
+        subject: 'Your account has been limited',
+        body: `Dear Customer,\n\nWe noticed unusual activity on your account. Please verify your account immediately to restore access.\n\n`,
+        links: [
+          { text: 'Verify Your Account', href: 'http://paypal.security-verify.ru/verify' }
+        ],
+        redFlag: 'sender-address',
+        isScam: true,
+        owlHint: 'Check who sent this email very carefully — look at every single letter.',
+        owlCorrect: 'Great catch! Look closely — that is a number "1" not a letter "L" in paypa<strong>1</strong>.com. Real PayPal emails only come from @paypal.com.',
+        owlDecisionCorrect: '🛡️ Brilliant! Scammers swap letters for similar-looking numbers. Always check the sender address letter by letter.',
+        owlDecisionWrong: 'That email was a scam! The address "paypa1.com" uses the number 1 instead of the letter L to trick you.'
+      },
+      {
+        id: 4,
+        type: 'email',
+        typeLabel: '📧 Email',
+        sender: 'order-update@amaz0n.com',
+        subject: 'Your Order #402-918-7721 Confirmed',
+        body: `Thank you for your purchase of <strong>$749.99</strong>. If you did not make this order, please cancel immediately.\n\n`,
+        links: [
+          { text: 'Cancel This Order', href: 'http://amazon.security-verify.ru/cancel', isRedFlag: true, flagId: 'cancel-link' }
+        ],
+        redFlag: 'cancel-link',
+        isScam: true,
+        owlHint: 'Hover your mouse over the link — or tap and hold on mobile — to see where it really goes.',
+        owlCorrect: 'You spotted it! The link looks like Amazon but ends in ".ru" which means Russia. Real Amazon links always end in ".com".',
+        owlDecisionCorrect: '🛡️ Superb! Always hover over links before clicking. A ".ru" domain is not Amazon — it is a scam site.',
+        owlDecisionWrong: 'That was a scam! The "Cancel This Order" link goes to a site in Russia, not Amazon.'
+      },
+      {
+        id: 5,
+        type: 'email',
+        typeLabel: '📧 Email',
+        sender: 'no-reply@amazon.com',
+        subject: 'Your Amazon Package Has Shipped',
+        body: `Your order of <strong>"Large Print Word Search Book"</strong> has shipped!\n\nExpected delivery: <strong>Friday</strong>.\n\nTrack your package below.\n\n`,
+        links: [
+          { text: 'Track Package', href: 'https://amazon.com/your-orders/track' }
+        ],
+        redFlag: null,   /* this scenario is SAFE */
+        isScam: false,
+        owlHint: 'Everything looks legitimate here. The sender is correct and links go to amazon.com.',
+        owlCorrect: 'Correct! This is a real Amazon email. The sender address is right, and the link goes to the real Amazon website.',
+        owlDecisionCorrect: '🛡️ Excellent judgement! This was a real email. The sender is @amazon.com and the link goes to the real Amazon site.',
+        owlDecisionWrong: 'This was actually a real, safe email! The sender "@amazon.com" is correct, and the link goes to the real Amazon website. Always check both carefully.'
+      }
+    ];
+
+    /* ----------------------------------------------------------
+       STATE — encapsulated in closure
+    ---------------------------------------------------------- */
+    let _score          = 0;   // never exposed to window
+    let _currentIndex   = 0;
+    let _flagClicked    = false;
+    let _correctFlag    = false;
+    let _decisionMade   = false;
+    let _started        = false;
+
+    /* AI feature state */
+    let _endlessMode    = false;   // true once player enters endless practice
+    let _endlessCount   = 0;       // how many AI scenarios played
+    /* Per-scenario result tracking for caregiver report:
+       Each entry: { type: 'urgency'|'sender'|'link'|'safe', correct: bool } */
+    let _scenarioResults = [];
+
+    /* ----------------------------------------------------------
+       LOCALSTORAGE HELPERS
+    ---------------------------------------------------------- */
+    const LS_KEY = 'fishThePhishState_v2';
+
+    function saveState() {
+      try {
+        localStorage.setItem(LS_KEY, JSON.stringify({
+          score: _score,
+          index: _currentIndex,
+          started: _started
+        }));
+      } catch(e) { /* storage may be unavailable */ }
+    }
+
+    function loadState() {
+      try {
+        const raw = localStorage.getItem(LS_KEY);
+        if (!raw) return;
+        const s = JSON.parse(raw);
+        if (typeof s.score === 'number')   _score = s.score;
+        if (typeof s.index === 'number')   _currentIndex = s.index;
+        if (typeof s.started === 'boolean') _started = s.started;
+      } catch(e) { /* corrupt data — ignore */ }
+    }
+
+    function clearState() {
+      try { localStorage.removeItem(LS_KEY); } catch(e) {}
+    }
+
+    /* ----------------------------------------------------------
+       OWL SVG BUILDER
+    ---------------------------------------------------------- */
+    function buildOwlSVG() {
+      return `<svg viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Professor Hoot owl mascot" width="80" height="80">
+        <!-- Body -->
+        <ellipse cx="40" cy="52" rx="26" ry="24" fill="#c8a45a"/>
+        <!-- Wing left -->
+        <ellipse cx="17" cy="54" rx="9" ry="14" fill="#a07030" transform="rotate(-10,17,54)"/>
+        <!-- Wing right -->
+        <ellipse cx="63" cy="54" rx="9" ry="14" fill="#a07030" transform="rotate(10,63,54)"/>
+        <!-- Belly -->
+        <ellipse cx="40" cy="57" rx="14" ry="13" fill="#e8d4a0"/>
+        <!-- Head -->
+        <circle cx="40" cy="30" r="20" fill="#c8a45a"/>
+        <!-- Ear tufts -->
+        <polygon points="24,14 20,4 28,12" fill="#a07030"/>
+        <polygon points="56,14 60,4 52,12" fill="#a07030"/>
+        <!-- Eyes white -->
+        <circle cx="32" cy="28" r="9" fill="white" stroke="#a07030" stroke-width="1.5"/>
+        <circle cx="48" cy="28" r="9" fill="white" stroke="#a07030" stroke-width="1.5"/>
+        <!-- Glasses frame -->
+        <circle cx="32" cy="28" r="9" fill="none" stroke="#2e2e2e" stroke-width="2"/>
+        <circle cx="48" cy="28" r="9" fill="none" stroke="#2e2e2e" stroke-width="2"/>
+        <line x1="41" y1="28" x2="39" y2="28" stroke="#2e2e2e" stroke-width="2"/>
+        <line x1="22" y1="26" x2="19" y2="25" stroke="#2e2e2e" stroke-width="2"/>
+        <line x1="58" y1="26" x2="61" y2="25" stroke="#2e2e2e" stroke-width="2"/>
+        <!-- Pupils -->
+        <circle cx="32" cy="28" r="5" fill="#2e1a00"/>
+        <circle cx="48" cy="28" r="5" fill="#2e1a00"/>
+        <!-- Eye shine -->
+        <circle cx="34" cy="26" r="2" fill="white"/>
+        <circle cx="50" cy="26" r="2" fill="white"/>
+        <!-- Beak -->
+        <polygon points="40,32 36,37 44,37" fill="#e8a020"/>
+        <!-- Smile lines -->
+        <path d="M34,38 Q40,42 46,38" fill="none" stroke="#a07030" stroke-width="1.5"/>
+        <!-- Belly dots -->
+        <circle cx="36" cy="56" r="2" fill="#c8a45a"/>
+        <circle cx="40" cy="60" r="2" fill="#c8a45a"/>
+        <circle cx="44" cy="56" r="2" fill="#c8a45a"/>
+        <!-- Feet -->
+        <ellipse cx="32" cy="74" rx="7" ry="3" fill="#e8a020"/>
+        <ellipse cx="48" cy="74" rx="7" ry="3" fill="#e8a020"/>
+      </svg>`;
+    }
+
+    /* ----------------------------------------------------------
+       SHIELD SVG HELPERS
+    ---------------------------------------------------------- */
+    function shieldSVG(earned) {
+      const fill  = earned ? '#e8a020' : 'none';
+      const stroke = earned ? '#c8880c' : '#aaa';
+      return `<svg class="shield ${earned?'earned':''}" viewBox="0 0 34 38" xmlns="http://www.w3.org/2000/svg" role="listitem" aria-label="${earned?'Shield earned':'Shield not yet earned'}">
+        <path d="M17 2 L30 8 L30 20 Q30 32 17 37 Q4 32 4 20 L4 8 Z"
+              fill="${fill}" stroke="${stroke}" stroke-width="2.5"/>
+        ${earned ? '<path d="M11 19 L15 23 L23 15" stroke="white" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/>' : ''}
+      </svg>`;
+    }
+
+    /* ----------------------------------------------------------
+       RENDER SHIELDS (top bar + modal)
+       Max 5 shields — always show 5 slots, filled gold up to count.
+    ---------------------------------------------------------- */
+    function renderShields(container, count) {
+      container.innerHTML = '';
+      for (let i = 0; i < 5; i++) {
+        container.insertAdjacentHTML('beforeend', shieldSVG(i < count));
+      }
+    }
+
+    /* ----------------------------------------------------------
+       SET OWL TEXT
+    ---------------------------------------------------------- */
+    function setOwlText(html, gameMode) {
+      const el = gameMode
+        ? document.getElementById('owl-game-text')
+        : document.getElementById('owl-text');
+      if (el) el.innerHTML = html;
+    }
+
+    /* ----------------------------------------------------------
+       ENABLE / DISABLE ACTION BUTTONS
+    ---------------------------------------------------------- */
+    function setButtonsEnabled(enabled) {
+      const keepBtn   = document.getElementById('keep-btn');
+      const deleteBtn = document.getElementById('delete-btn');
+      keepBtn.disabled   = !enabled;
+      deleteBtn.disabled = !enabled;
+      keepBtn.setAttribute('aria-disabled', String(!enabled));
+      deleteBtn.setAttribute('aria-disabled', String(!enabled));
+    }
+
+    /* ----------------------------------------------------------
+       SHOW FEEDBACK BANNER
+    ---------------------------------------------------------- */
+    function showFeedback(html, type) {
+      const el = document.getElementById('feedback-banner');
+      el.innerHTML = html;
+      el.className = 'feedback-banner ' + type;
+      el.style.display = 'block';
+      // accessible announcement happens via role="alert"
+    }
+
+    function hideFeedback() {
+      const el = document.getElementById('feedback-banner');
+      el.style.display = 'none';
+      el.innerHTML = '';
+    }
+
+    /* ----------------------------------------------------------
+       RENDER PROGRESS DOTS
+    ---------------------------------------------------------- */
+    function renderProgress() {
+      const row = document.getElementById('progress-row');
+      if (!row) return;
+      row.innerHTML = '';
+      for (let i = 0; i < scenarios.length; i++) {
+        const dot = document.createElement('div');
+        dot.className = 'prog-dot' + (i < _currentIndex ? ' done' : i === _currentIndex ? ' active' : '');
+        dot.setAttribute('role', 'listitem');
+        dot.setAttribute('aria-label', `Scenario ${i+1}: ${i < _currentIndex ? 'complete' : i === _currentIndex ? 'current' : 'upcoming'}`);
+        row.appendChild(dot);
+      }
+      const ctr = document.getElementById('scenario-counter');
+      if (ctr) ctr.textContent = `Message ${_currentIndex+1} of ${scenarios.length}`;
+    }
+
+    /* ----------------------------------------------------------
+       RENDER SCENARIO (core scenarios 1-5)
+    ---------------------------------------------------------- */
+    function renderScenario(index) {
+      const sc = scenarios[index];
+
+      /* Homoglyph audit for dev review */
+      const senderGlyphs = detectHomoglyphs(sc.sender);
+      if (senderGlyphs.length) {
+        (console.log || console.warn).call(console, '[Fish the Phish] Homoglyph found in sender:', senderGlyphs);
+      }
+
+      /* Remove any AI disclaimer strip from previous scenario */
+      const old = document.getElementById('ai-disclaimer-strip');
+      if (old) old.remove();
+
+      _renderScenarioData(sc, false);
+    }
+
+    /* ----------------------------------------------------------
+       FLAG CLICK HANDLER
+    ---------------------------------------------------------- */
+    function handleFlagClick(e) {
+      e.preventDefault();
+      if (_decisionMade) return;
+
+      const el     = e.currentTarget || this;
+      const flagId = el.getAttribute('data-flag');
+      const sc     = _endlessMode ? _currentAIScenario : scenarios[_currentIndex];
+
+      _flagClicked = true;
+
+      if (flagId === sc.redFlag) {
+        _correctFlag = true;
+        el.classList.add('correct');
+        el.setAttribute('aria-label', el.getAttribute('aria-label') + ' — CORRECT! This is the red flag.');
+        setOwlText(sc.owlCorrect, true);
+        setButtonsEnabled(true);
+        hideFeedback();
+      } else {
+        el.classList.add('wrong');
+        setTimeout(() => el.classList.remove('wrong'), 600);
+        setOwlText(sc.owlHint, true);
+        showFeedback('❌ That\'s not quite right. Read the hint above and try again!', 'incorrect');
+      }
+    }
+
+    /* ----------------------------------------------------------
+       DECISION HANDLER (Keep / Delete)
+    ---------------------------------------------------------- */
+    function handleDecision(keepMessage) {
+      if (_decisionMade) return;
+      const sc = _endlessMode ? _currentAIScenario : scenarios[_currentIndex];
+
+      _decisionMade = true;
+      setButtonsEnabled(false);
+
+      const isCorrect = keepMessage === !sc.isScam;
+
+      /* Track result for caregiver report */
+      const areaTag = _classifyScenario(sc);
+      _scenarioResults.push({ type: areaTag, correct: isCorrect });
+
+      if (isCorrect) {
+        if (_endlessMode) {
+          /* Endless mode: no shield awarded, just congratulate */
+          setOwlText(sc.owlDecisionCorrect, true);
+          showFeedback('✅ Well done! Great spotting!', 'correct');
+        } else {
+          _score++;
+          setOwlText(sc.owlDecisionCorrect, true);
+          showFeedback('✅ Correct! You earned a shield! 🛡️', 'correct');
+        }
+      } else {
+        setOwlText(sc.owlDecisionWrong, true);
+        showFeedback('❌ Not quite! Read the explanation above and try the next message.', 'incorrect');
+      }
+
+      renderShields(document.getElementById('shields-row'), _score);
+      saveState();
+
+      const nextBtn = document.getElementById('next-btn');
+
+      if (_endlessMode) {
+        /* In endless mode, every scenario is followed by "Next" + "End Practice" */
+        _endlessCount++;
+        nextBtn.classList.add('visible');
+        nextBtn.textContent = '➡️ Next AI Scenario';
+        document.getElementById('end-endless-btn').hidden = false;
+      } else if (_currentIndex < scenarios.length - 1) {
+        nextBtn.classList.add('visible');
+        nextBtn.textContent = '➡️ Next Message';
+      } else {
+        /* Finished core 5 — open completion modal (endless button is inside it) */
+        nextBtn.classList.remove('visible');
+        setTimeout(showCompletionModal, 1200);
+      }
+    }
+
+    /**
+     * Classify a scenario into a caregiver report area tag.
+     * @param {Object} sc scenario object
+     * @returns {string} tag
+     */
+    function _classifyScenario(sc) {
+      if (!sc.isScam)                   return 'safe';
+      if (sc.redFlag === 'urgent-phrase') return 'urgency';
+      if (sc.redFlag === 'sender-address') return 'sender';
+      if (/link|cancel|verify/i.test(sc.redFlag || '')) return 'link';
+      if (sc.redFlag === 'phone-number') return 'urgency';
+      if (sc.redFlag === 'suspicious-link') return 'link';
+      if (sc.redFlag === 'fake-link') return 'link';
+      return 'sender'; // fallback
+    }
+
+    /* Holds the current AI-generated scenario object during endless mode */
+    let _currentAIScenario = null;
+
+    /* ----------------------------------------------------------
+       SAFE SCENARIO: if no red flag, enable buttons immediately
+    ---------------------------------------------------------- */
+    function checkSafeScenario() {
+      const sc = _endlessMode ? _currentAIScenario : scenarios[_currentIndex];
+      if (sc && sc.redFlag === null) {
+        setButtonsEnabled(true);
+        setOwlText('This message looks clean to me. Do you think it is safe or a scam?', true);
+      }
+    }
+
+    /* ----------------------------------------------------------
+       NEXT SCENARIO
+    ---------------------------------------------------------- */
+    function nextScenario() {
+      if (_endlessMode) {
+        startNextAIScenario();
+        return;
+      }
+      _currentIndex++;
+      if (_currentIndex >= scenarios.length) {
+        showCompletionModal();
+        return;
+      }
+      renderScenario(_currentIndex);
+      checkSafeScenario();
+      saveState();
+    }
+
+    /* ----------------------------------------------------------
+       ENDLESS MODE — load and render an AI scenario
+    ---------------------------------------------------------- */
+    async function startNextAIScenario() {
+      /* Show loading state in type bar and counter */
+      const typeBar   = document.getElementById('scenario-type-bar');
+      const header    = document.getElementById('scenario-header');
+      const body      = document.getElementById('scenario-body');
+      const nextBtn   = document.getElementById('next-btn');
+      const counter   = document.getElementById('scenario-counter');
+
+      nextBtn.classList.remove('visible');
+      hideFeedback();
+      setButtonsEnabled(false);
+      document.getElementById('end-endless-btn').hidden = true;
+
+      typeBar.className = 'ai-generated';
+      typeBar.innerHTML = `<span class="ai-loading" aria-hidden="true"></span> <span>Generating your next scenario…</span>`;
+      header.innerHTML  = '';
+      body.innerHTML    = '';
+      if (counter) counter.textContent = 'Endless Practice — Scenario ' + (_endlessCount + 1);
+
+      setOwlText('Give me just a moment to create your next challenge…', true);
+
+      try {
+        /* generateScenario() internally shows/hides #aiLoadingSpinner via _showLoading() */
+        const raw = await aiService.generateScenario();
+        if (!raw) throw new Error('No scenario returned');
+
+        /* Transform raw proxy / fallback response into game scenario shape */
+        const sc = _transformAIResponse(raw);
+        _currentAIScenario = sc;
+
+        /* Insert disclaimer strip above the scenario card */
+        const existingDisclaimer = document.getElementById('ai-disclaimer-strip');
+        if (existingDisclaimer) existingDisclaimer.remove();
+
+        const disclaimer    = document.createElement('div');
+        disclaimer.id       = 'ai-disclaimer-strip';
+        disclaimer.className = 'ai-disclaimer';
+        disclaimer.setAttribute('aria-label', sc.isAIGenerated
+          ? 'AI-Generated Practice Scenario'
+          : 'Practice Scenario');
+        disclaimer.innerHTML = sc.isAIGenerated
+          ? '<span aria-hidden="true">✦</span> <strong>AI-Generated Practice Scenario</strong> — content may vary in style'
+          : '<span aria-hidden="true">📋</span> <strong>Practice Scenario</strong> — using built-in training content';
+
+        const scenarioWrap = document.getElementById('scenario-wrap');
+        scenarioWrap.insertAdjacentElement('beforebegin', disclaimer);
+
+        /* Render using the shared renderer, flagging as AI/practice mode */
+        _renderScenarioData(sc, true);
+
+      } catch(err) {
+        body.innerHTML = `<div style="padding:20px;color:var(--red-scam);">Sorry, could not generate a scenario. Please try again.</div>`;
+        nextBtn.textContent = '🔄 Try Again';
+        nextBtn.classList.add('visible');
+      }
+    }
+
+    /**
+     * Shared renderer used by both core and AI scenarios.
+     * Extracted from renderScenario() to avoid duplication.
+     */
+    function _renderScenarioData(sc, isAI) {
+      _flagClicked  = false;
+      _correctFlag  = false;
+      _decisionMade = false;
+
+      hideFeedback();
+      setButtonsEnabled(false);
+
+      const typeBar  = document.getElementById('scenario-type-bar');
+      const header   = document.getElementById('scenario-header');
+      const body     = document.getElementById('scenario-body');
+      const nextBtn  = document.getElementById('next-btn');
+
+      /* Type bar */
+      typeBar.className = isAI ? 'ai-generated' : '';
+      typeBar.innerHTML = `<span aria-hidden="true"></span><span>${sc.typeLabel}</span>`;
+      if (isAI) {
+        if (sc.isAIGenerated !== false) {
+          /* Real AI scenario — sparkle purple badge */
+          typeBar.innerHTML += `<span class="ai-badge" aria-label="AI generated scenario" style="margin-left:auto;">
+            <span class="sparkle" aria-hidden="true">✦</span> AI-Generated
+          </span>`;
+        } else {
+          /* Fallback / practice scenario — solid blue badge */
+          typeBar.innerHTML += `<span class="fallback-badge" aria-label="Practice scenario" style="margin-left:auto;">
+            Practice Scenario
+          </span>`;
+        }
+      }
+
+      nextBtn.classList.remove('visible');
+
+      /* Header */
+      let headerHTML = `<div class="header-row">
+        <span class="header-label">From:</span>
+        <span class="header-value">${sc.sender}</span>
+      </div>`;
+      if (sc.subject) {
+        headerHTML += `<div class="header-row">
+          <span class="header-label">Subject:</span>
+          <span class="header-value">${sc.subject}</span>
+        </div>`;
+      }
+      header.innerHTML = headerHTML;
+
+      /* Body */
+      let bodyHTML = `<div style="white-space:pre-wrap;">${sc.body}</div>`;
+
+      sc.links.forEach(link => {
+        if (link.isRedFlag) {
+          bodyHTML += `<p style="margin-top:14px;">
+            <a class="sim-link clickable-flag"
+               data-flag="${link.flagId}"
+               data-href="${link.href}"
+               href="#" tabindex="0" role="button"
+               aria-label="Link: ${link.text} — click if you think this link is suspicious"
+               >${link.text}</a></p>`;
+        } else {
+          bodyHTML += `<p style="margin-top:14px;">
+            <a class="sim-link"
+               data-href="${link.href}"
+               href="#" tabindex="0" role="link"
+               aria-label="Link: ${link.text}"
+               >${link.text}</a></p>`;
+        }
+      });
+
+      body.innerHTML = bodyHTML;
+
+      /* Attach flag click listeners */
+      body.querySelectorAll('.clickable-flag').forEach(el => {
+        el.addEventListener('click', handleFlagClick);
+        el.addEventListener('keydown', e => {
+          if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleFlagClick.call(el, e); }
+        });
+      });
+
+      header.querySelectorAll('.clickable-flag').forEach(el => {
+        el.addEventListener('click', handleFlagClick);
+        el.addEventListener('keydown', e => {
+          if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleFlagClick.call(el, e); }
+        });
+      });
+
+      /* Link hover → status bar */
+      const allLinks  = body.querySelectorAll('a[data-href]');
+      const statusUrl = document.getElementById('status-url');
+
+      allLinks.forEach(link => {
+        link.addEventListener('click', e => { e.preventDefault(); });
+        link.addEventListener('mouseenter', () => {
+          const href = link.getAttribute('data-href');
+          statusUrl.textContent = href;
+          statusUrl.className   = detectHomoglyphs(href).length ? 'suspicious' : 'safe';
+        });
+        link.addEventListener('mouseleave', () => {
+          statusUrl.textContent = 'Hover over a link to see where it really goes';
+          statusUrl.className   = '';
+        });
+        link.addEventListener('focus', () => {
+          const href = link.getAttribute('data-href');
+          statusUrl.textContent = href;
+          statusUrl.className   = detectHomoglyphs(href).length ? 'suspicious' : 'safe';
+        });
+      });
+
+      setOwlText('Read this message carefully. Tap on anything that looks suspicious to me!', true);
+
+      if (!isAI) renderProgress();
+
+      /* Enable immediately for safe scenarios */
+      if (sc.redFlag === null) {
+        setButtonsEnabled(true);
+        setOwlText('This message looks clean to me. Do you think it is safe or a scam?', true);
+      }
+    }
+
+    /* ----------------------------------------------------------
+       COMPLETION MODAL
+    ---------------------------------------------------------- */
+    function showCompletionModal() {
+      const overlay = document.getElementById('modal-overlay');
+      const desc    = document.getElementById('modal-desc');
+      const shields = document.getElementById('modal-shields');
+
+      if (_endlessMode) {
+        desc.textContent = `Great practice! You have earned ${_score} shield${_score !== 1 ? 's' : ''} from the core training. ${_score === 5 ? '🏆 Perfect core score!' : ''}`;
+      } else {
+        desc.textContent = `You have earned ${_score} shield${_score !== 1 ? 's' : ''}! ${_score === 5 ? '🏆 Perfect score!' : _score >= 3 ? '🌟 Great work!' : 'Keep practising!'}`;
+      }
+
+      renderShields(shields, _score);
+      overlay.classList.add('visible');
+      document.getElementById('name-field').focus();
+
+      /* Pre-compute weak/strong areas for caregiver report */
+      _computePerformanceAreas();
+    }
+
+    /**
+     * Compute which scenario types the player got right/wrong.
+     * Results stored on _weakAreas / _strongAreas for caregiver report.
+     */
+    let _weakAreas   = [];
+    let _strongAreas = [];
+
+    function _computePerformanceAreas() {
+      const byType = {};
+      _scenarioResults.forEach(r => {
+        if (!byType[r.type]) byType[r.type] = { correct: 0, total: 0 };
+        byType[r.type].total++;
+        if (r.correct) byType[r.type].correct++;
+      });
+      _weakAreas   = [];
+      _strongAreas = [];
+      Object.keys(byType).forEach(type => {
+        const { correct, total } = byType[type];
+        if (correct / total >= 0.5) _strongAreas.push(type);
+        else _weakAreas.push(type);
+      });
+    }
+
+    /* ----------------------------------------------------------
+       SHA-256 via WebCrypto API
+       Accepts an ArrayBuffer (for hashing raw PDF bytes).
+    ---------------------------------------------------------- */
+    async function sha256(buffer) {
+      const hash = await crypto.subtle.digest('SHA-256', buffer);
+      return Array.from(new Uint8Array(hash))
+                  .map(b => b.toString(16).padStart(2, '0'))
+                  .join('');
+    }
+
+    /* ----------------------------------------------------------
+       CERTIFICATE GENERATION with jsPDF
+       Two-pass approach:
+         Pass 1 — render full certificate content (no hash yet)
+                  → export to ArrayBuffer → SHA-256 hash the bytes
+         Pass 2 — render identical content + print hash at bottom
+                  → save final PDF
+       The hash is a fingerprint of the certificate content.
+       Anyone who regenerates the same certificate (same name/score/
+       date) from this app will get the same hash, confirming it
+       has not been altered.
+    ---------------------------------------------------------- */
+    async function generateCertificate() {
+      const certBtn   = document.getElementById('cert-btn');
+      const origLabel = certBtn.textContent;
+      certBtn.disabled = true;
+      certBtn.textContent = 'Generating... please wait';
+
+      try {
+        if (!window.jspdf || !window.jspdf.jsPDF) {
+          throw new Error('PDF library did not load. Please check your internet connection and try again.');
+        }
+
+        const name    = document.getElementById('name-field').value.trim() || 'Valued Learner';
+        const dateStr = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+        const { jsPDF } = window.jspdf;
+        const W = 297, H = 210;
+
+        /* ── Shared drawing function ────────────────────────
+           Draws everything except the hash line so the same
+           content is rendered identically in both passes.
+        ─────────────────────────────────────────────────── */
+        function drawCertContent(doc) {
+          doc.setFillColor(253, 248, 240);
+          doc.rect(0, 0, W, H, 'F');
+
+          doc.setDrawColor(232, 160, 32);
+          doc.setLineWidth(4);
+          doc.rect(8, 8, W - 16, H - 16);
+          doc.setLineWidth(1.5);
+          doc.rect(13, 13, W - 26, H - 26);
+
+          [[15,15],[282,15],[15,195],[282,195]].forEach(([x,y]) => {
+            doc.setFillColor(232,160,32); doc.circle(x, y, 4, 'F');
+          });
+
+          doc.setFontSize(16); doc.setTextColor(232,160,32);
+          doc.text('* * * * * * *', W/2, 32, { align: 'center' });
+
+          doc.setFontSize(30); doc.setTextColor(26,58,92);
+          doc.setFont('helvetica', 'bold');
+          doc.text('CERTIFICATE OF ACHIEVEMENT', W/2, 47, { align: 'center' });
+
+          doc.setFontSize(13); doc.setFont('helvetica', 'normal');
+          doc.setTextColor(85,95,107);
+          doc.text('Fish the Phish  -  Phishing Awareness Training', W/2, 57, { align: 'center' });
+
+          doc.setDrawColor(232,160,32); doc.setLineWidth(1);
+          doc.line(30, 63, W-30, 63);
+
+          doc.setFontSize(13); doc.setTextColor(85,95,107);
+          doc.text('This is to certify that', W/2, 75, { align: 'center' });
+
+          doc.setFontSize(28); doc.setTextColor(26,58,92);
+          doc.setFont('helvetica', 'bolditalic');
+          doc.text(name, W/2, 90, { align: 'center' });
+          doc.setLineWidth(0.8); doc.setDrawColor(200,164,90);
+          const nw = doc.getTextWidth(name);
+          doc.line(W/2 - nw/2 - 4, 93, W/2 + nw/2 + 4, 93);
+
+          doc.setFontSize(13); doc.setFont('helvetica','normal');
+          doc.setTextColor(85,95,107);
+          doc.text('has successfully completed the Fish the Phish phishing awareness training', W/2, 104, { align: 'center' });
+          doc.text('and earned ' + _score + ' out of 5 Cybersecurity Shields on ' + dateStr + '.', W/2, 114, { align: 'center' });
+
+          const bx0 = W/2 - 42;
+          for (let i = 0; i < 5; i++) {
+            const bx = bx0 + i * 22;
+            doc.setFillColor(i < _score ? 232 : 210, i < _score ? 160 : 210, i < _score ? 32 : 210);
+            doc.roundedRect(bx, 122, 16, 18, 2, 2, 'F');
+            if (i < _score) {
+              doc.setDrawColor(255,255,255); doc.setLineWidth(1.5);
+              doc.line(bx+4,132, bx+7,135); doc.line(bx+7,135, bx+12,127);
+            }
+          }
+
+          doc.setDrawColor(232,160,32); doc.setLineWidth(0.8);
+          doc.line(30, 150, W-30, 150);
+        }
+
+        /* ── Pass 1: render content → hash the PDF bytes ── */
+        const doc1 = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+        drawCertContent(doc1);
+        /* Add a footer placeholder so content is byte-identical to pass 2 */
+        doc1.setFontSize(9); doc1.setTextColor(180,190,200);
+        doc1.text('Fish the Phish  -  Helping seniors stay safe online', W/2, 197, { align: 'center' });
+
+        const pdfBytes = doc1.output('arraybuffer');
+        const hash = await sha256(pdfBytes);
+
+        /* ── Pass 2: render identical content + hash + save ── */
+        const doc2 = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+        drawCertContent(doc2);
+
+        /* Hash label */
+        doc2.setFontSize(8); doc2.setFont('helvetica','normal');
+        doc2.setTextColor(85,95,107);
+        doc2.text('SHA-256 Certificate Hash:', 22, 160);
+
+        /* Hash value — split across two lines to fit A4 width */
+        doc2.setFont('courier','normal');
+        doc2.setTextColor(100,110,120);
+        doc2.text(hash.slice(0, 32), 22, 167);
+        doc2.text(hash.slice(32),    22, 173);
+
+        /* Footer */
+        doc2.setFontSize(9); doc2.setTextColor(180,190,200);
+        doc2.text('Fish the Phish  -  Helping seniors stay safe online', W/2, 197, { align: 'center' });
+
+        /* Trigger browser download */
+        const safeName = name.replace(/[^a-zA-Z0-9 _-]/g,'').replace(/\s+/g,'_');
+        doc2.save('FishThePhish_Certificate_' + safeName + '.pdf');
+
+        certBtn.textContent = 'Downloaded!';
+        setTimeout(() => { certBtn.textContent = origLabel; certBtn.disabled = false; }, 2500);
+
+      } catch(err) {
+        certBtn.textContent = origLabel;
+        certBtn.disabled = false;
+        const old = document.getElementById('cert-error');
+        if (old) old.remove();
+        const errBox = document.createElement('p');
+        errBox.id = 'cert-error';
+        errBox.style.cssText = 'color:#b52020;font-weight:bold;margin-top:10px;font-size:1rem;';
+        errBox.textContent = 'Could not generate certificate: ' + err.message;
+        certBtn.insertAdjacentElement('afterend', errBox);
+      }
+    }
+
+    /* ----------------------------------------------------------
+       RESET
+    ---------------------------------------------------------- */
+    function resetGame() {
+      if (!confirm('Reset all your progress? This cannot be undone.')) return;
+      _score             = 0;
+      _currentIndex      = 0;
+      _started           = false;
+      _flagClicked       = false;
+      _correctFlag       = false;
+      _decisionMade      = false;
+      _endlessMode       = false;
+      _endlessCount      = 0;
+      _scenarioResults   = [];
+      _weakAreas         = [];
+      _strongAreas       = [];
+      _currentAIScenario = null;
+      clearState();
+      renderShields(document.getElementById('shields-row'), 0);
+      document.getElementById('game-screen').hidden    = true;
+      document.getElementById('welcome-screen').hidden = false;
+      document.getElementById('modal-overlay').classList.remove('visible');
+      
+      document.getElementById('caregiver-guide-output').classList.remove('visible');
+      const old = document.getElementById('ai-disclaimer-strip');
+      if (old) old.remove();
+      setOwlText('Hello! I am Professor Hoot. Ready to learn about phishing scams?', false);
+    }
+
+    /* ----------------------------------------------------------
+       CHECK PROXY AVAILABILITY
+       ---------------------------------------------------------------
+       Called once on init. If the Cloudflare Worker proxy is not
+       reachable (URL placeholder not replaced, or network error),
+       the endless-practice button is updated to show a message so
+       the player understands AI features need a connection.
+
+       Falls back silently — the 3 built-in fallback scenarios still
+       work without the proxy.
+    ---------------------------------------------------------- */
+    async function checkProxyAvailable() {
+      const endlessBtn     = document.getElementById('endless-btn');
+      const proxyNote      = document.querySelector('#endless-modal-section p:last-of-type');
+      const isPlaceholder  = PROXY_URL.includes('YOUR-SUBDOMAIN');
+
+      if (isPlaceholder) {
+        /* Developer hasn't deployed the worker yet — show fallback mode notice */
+        if (endlessBtn) {
+          endlessBtn.textContent = '📋 Try Practice Scenarios';
+          endlessBtn.title       = 'AI proxy not configured — using built-in practice scenarios';
+        }
+        if (proxyNote) {
+          proxyNote.textContent = 'Using built-in practice scenarios. Deploy worker.js to enable AI.';
+        }
+        return;
+      }
+
+      try {
+        const resp = await fetch(`${PROXY_URL}/api/generate-scenario`, {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify({ previousTypes: [] }),
+          signal:  AbortSignal.timeout(5000)
+        });
+
+        if (!resp.ok) throw new Error(`Proxy status ${resp.status}`);
+
+        /* Proxy is online — update button to confirm AI is active */
+        if (endlessBtn) {
+          endlessBtn.textContent = '✨ Try Endless Practice (AI-Generated)';
+        }
+
+      } catch (e) {
+        /* Proxy unreachable — degrade to fallback scenarios silently */
+        (console.warn || console.log).call(console,
+          '[Fish the Phish] AI proxy unavailable:', e.message);
+        if (endlessBtn) {
+          endlessBtn.textContent = '📋 Try Practice Scenarios';
+          endlessBtn.title       = 'AI features coming soon! Practise with our curated scenarios below.';
+        }
+        if (proxyNote) {
+          proxyNote.textContent  = 'AI features coming soon! Practise with our built-in scenarios.';
+        }
+      }
+    }
+
+    /* ----------------------------------------------------------
+       INIT
+    ---------------------------------------------------------- */
+    function init() {
+      /* Inject owl SVGs */
+      document.getElementById('owl-svg-wrap').innerHTML     = buildOwlSVG();
+      document.getElementById('owl-svg-game-wrap').innerHTML = buildOwlSVG();
+
+      /* Initial shields */
+      loadState();
+      renderShields(document.getElementById('shields-row'), _score);
+
+      /* Restore progress if mid-game */
+      if (_started && _currentIndex < scenarios.length) {
+        document.getElementById('welcome-screen').hidden = true;
+        document.getElementById('game-screen').hidden    = false;
+        renderScenario(_currentIndex);
+        checkSafeScenario();
+      }
+
+      /* --------------------------------------------------------
+         ATTACH ALL EVENT LISTENERS
+         SECURITY: addEventListener only — never inline handlers
+      -------------------------------------------------------- */
+
+      /* Start button */
+      document.getElementById('start-btn').addEventListener('click', () => {
+        _started           = true;
+        _currentIndex      = 0;
+        _score             = 0;
+        _endlessMode       = false;
+        _endlessCount      = 0;
+        _scenarioResults   = [];
+        _weakAreas         = [];
+        _strongAreas       = [];
+        _currentAIScenario = null;
+        document.getElementById('welcome-screen').hidden = true;
+        document.getElementById('game-screen').hidden    = false;
+        
+        renderScenario(0);
+        checkSafeScenario();
+        saveState();
+        renderShields(document.getElementById('shields-row'), _score);
+      });
+
+      /* Keep button */
+      document.getElementById('keep-btn').addEventListener('click', () => {
+        handleDecision(true);
+      });
+
+      /* Delete button */
+      document.getElementById('delete-btn').addEventListener('click', () => {
+        handleDecision(false);
+      });
+
+      /* Next scenario button */
+      document.getElementById('next-btn').addEventListener('click', () => {
+        nextScenario();
+      });
+
+      /* Reset button */
+      document.getElementById('reset-btn').addEventListener('click', resetGame);
+
+      /* Certificate download */
+      document.getElementById('cert-btn').addEventListener('click', generateCertificate);
+
+      /* --------------------------------------------------------
+         AI Feature: Endless practice mode button (inside modal)
+      -------------------------------------------------------- */
+      document.getElementById('endless-btn').addEventListener('click', () => {
+        _endlessMode  = true;
+        _endlessCount = 0;
+        /* Close the modal first */
+        document.getElementById('modal-overlay').classList.remove('visible');
+        /* Remove any leftover AI disclaimer strip */
+        const old = document.getElementById('ai-disclaimer-strip');
+        if (old) old.remove();
+        /* Ensure game screen is showing */
+        document.getElementById('game-screen').hidden    = false;
+        document.getElementById('welcome-screen').hidden = true;
+        /* Scroll user back up to the game */
+        document.getElementById('app').scrollIntoView({ behavior: 'smooth' });
+        startNextAIScenario();
+      });
+
+      /* --------------------------------------------------------
+         End endless practice → show completion modal with cert
+      -------------------------------------------------------- */
+      document.getElementById('end-endless-btn').addEventListener('click', () => {
+        document.getElementById('end-endless-btn').hidden = true;
+        showCompletionModal();
+      });
+
+      /* --------------------------------------------------------
+         AI Feature: Family discussion guide — two-step flow:
+         1. Click guide-btn → reveal name input
+         2. Click guide-generate-btn → run report with that name
+      -------------------------------------------------------- */
+      document.getElementById('guide-btn').addEventListener('click', () => {
+        const nameWrap = document.getElementById('guide-name-wrap');
+        nameWrap.classList.add('visible');
+        /* Pre-fill from cert name field if already typed */
+        const certName = document.getElementById('name-field').value.trim();
+        const guideField = document.getElementById('guide-name-field');
+        if (certName && !guideField.value) guideField.value = certName;
+        guideField.focus();
+        nameWrap.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      });
+
+      document.getElementById('guide-generate-btn').addEventListener('click', async () => {
+        const guideBtn    = document.getElementById('guide-generate-btn');
+        const guideOutput = document.getElementById('caregiver-guide-output');
+        const guideContent= document.getElementById('guide-content');
+        const name        = document.getElementById('guide-name-field').value.trim()
+                         || document.getElementById('name-field').value.trim()
+                         || 'Your family member';
+
+        guideBtn.disabled = true;
+        guideBtn.innerHTML = '<span class="ai-loading" aria-hidden="true"></span> Generating guide…';
+
+        try {
+          _computePerformanceAreas();
+
+          const html = await aiService.generateCaregiverReport(
+            name,
+            _score,
+            _strongAreas,
+            _weakAreas
+          );
+
+          guideContent.innerHTML  = html;
+          guideOutput.classList.add('visible');
+
+        } catch(err) {
+          guideContent.innerHTML = '<p style="color:var(--red-scam);">Sorry, could not generate the guide. Please try again.</p>';
+          guideOutput.classList.add('visible');
+        } finally {
+          guideBtn.disabled = false;
+          guideBtn.innerHTML = '✦ Generate Guide for This Person';
+          guideOutput.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+      });
+
+      /* Play again */
+      document.getElementById('again-btn').addEventListener('click', () => {
+        document.getElementById('modal-overlay').classList.remove('visible');
+        document.getElementById('caregiver-guide-output').classList.remove('visible');
+        document.getElementById('guide-name-wrap').classList.remove('visible');
+        document.getElementById('end-endless-btn').hidden = true;
+        const old = document.getElementById('ai-disclaimer-strip');
+        if (old) old.remove();
+        _score           = 0;
+        _currentIndex    = 0;
+        _started         = true;
+        _endlessMode     = false;
+        _endlessCount    = 0;
+        _scenarioResults = [];
+        _weakAreas       = [];
+        _strongAreas     = [];
+        _currentAIScenario = null;
+        renderShields(document.getElementById('shields-row'), 0);
+        renderScenario(0);
+        checkSafeScenario();
+        saveState();
+      });
+
+      /* Close modal on overlay click (accessibility) */
+      document.getElementById('modal-overlay').addEventListener('click', e => {
+        if (e.target === document.getElementById('modal-overlay')) {
+          /* Don't close — require explicit button press for seniors */
+        }
+      });
+
+      /* Trap focus in modal when open */
+      document.getElementById('modal-overlay').addEventListener('keydown', e => {
+        if (e.key === 'Escape') {
+          /* Don't dismiss — require button press */
+        }
+      });
+
+      /* Check AI proxy availability in the background — doesn't block init */
+      checkProxyAvailable();
+    }
+
+    /* Public surface (minimal) */
+    return { init };
+
+  })(); /* end IIFE */
+
+  /* Kick everything off */
+  document.addEventListener('DOMContentLoaded', () => { Game.init(); });
+  </script>
+</body>
+</html>
