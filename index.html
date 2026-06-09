@@ -892,6 +892,25 @@
       outline: 3px solid var(--sage);
       border-color: var(--sage);
     }
+  /* ============================================================
+     NO-CERT MESSAGE (score below threshold)
+  ============================================================ */
+  .no-cert-message {
+    background: var(--gold-light);
+    border: 2px solid var(--gold);
+    border-radius: var(--radius-sm);
+    padding: 16px 18px;
+    font-size: 1rem;
+    color: var(--blue-deep);
+    line-height: 1.6;
+    margin-bottom: 18px;
+    text-align: left;
+  }
+
+  #try-again-btn {
+    background: var(--blue-mid);
+    color: var(--white);
+  }
   </style>
 </head>
 <body>
@@ -921,7 +940,7 @@
         </div>
       </div>
       <h2>Welcome to Fish the Phish!</h2>
-      <p>You will see 5 messages – some real, some scams. Tap on anything that looks suspicious, then decide to <strong>Keep</strong> or <strong>Delete</strong> the message. Earn a 🛡️ shield for every correct answer!</p>
+      <p>You will see 5 randomly selected messages from our question bank – some real, some scams. Tap on anything that looks suspicious, then decide to <strong>Keep</strong> or <strong>Delete</strong> the message. Earn a 🛡️ shield for every correct answer! Earn <strong>3 or more shields</strong> to unlock your certificate.</p>
       <button id="start-btn">🎮 Start the Game</button>
     </div>
 
@@ -999,18 +1018,27 @@
       <h2 id="modal-title">🎉 Well Done!</h2>
       <p id="modal-desc"></p>
       <div id="modal-shields" aria-hidden="true"></div>
-      <label for="name-field" style="display:block;text-align:left;font-weight:700;margin-bottom:6px;font-size:1rem;">
-        Your name (for the certificate):
-      </label>
-      <input type="text" id="name-field" placeholder="Enter your name" autocomplete="name" aria-required="true" maxlength="80" />
-      <button class="modal-btn" id="cert-btn">📄 Download My Certificate</button>
+      <!-- CERT AREA: shown only when _score >= 3 -->
+      <div id="cert-area">
+        <label for="name-field" style="display:block;text-align:left;font-weight:700;margin-bottom:6px;font-size:1rem;">
+          Your name (for the certificate):
+        </label>
+        <input type="text" id="name-field" placeholder="Enter your name" autocomplete="name" aria-required="true" maxlength="80" />
+        <button class="modal-btn" id="cert-btn">📄 Download My Certificate</button>
 
-      <!-- SHA-256 verification explanation -->
-      <div style="background:#f0f4ff;border:1.5px solid #b0baf8;border-radius:var(--radius-sm);padding:14px 16px;margin-bottom:14px;text-align:left;">
-        <p style="font-weight:700;color:var(--blue-deep);font-size:.95rem;margin-bottom:6px;">🔐 About your certificate hash</p>
-        <p style="font-size:.88rem;color:var(--grey-mid);line-height:1.55;">
-          Your certificate contains a <strong>SHA-256 hash</strong> — a unique 64-character digital fingerprint of the entire PDF file. If even a single pixel of the certificate were changed, the hash would be completely different. This makes the certificate tamper-evident and uniquely yours.
-        </p>
+        <!-- SHA-256 verification explanation -->
+        <div style="background:#f0f4ff;border:1.5px solid #b0baf8;border-radius:var(--radius-sm);padding:14px 16px;margin-bottom:14px;text-align:left;">
+          <p style="font-weight:700;color:var(--blue-deep);font-size:.95rem;margin-bottom:6px;">🔐 About your certificate hash</p>
+          <p style="font-size:.88rem;color:var(--grey-mid);line-height:1.55;">
+            Your certificate contains a <strong>SHA-256 hash</strong> — a unique 64-character digital fingerprint of the entire PDF file. If even a single pixel of the certificate were changed, the hash would be completely different. This makes the certificate tamper-evident and uniquely yours.
+          </p>
+        </div>
+      </div>
+
+      <!-- NO-CERT AREA: shown only when _score < 3 -->
+      <div id="no-cert-area" style="display:none;">
+        <div id="no-cert-msg" class="no-cert-message" role="status" aria-live="polite"></div>
+        <button class="modal-btn" id="try-again-btn">🔄 Try Again</button>
       </div>
 
       <!-- ========================================================
@@ -1518,41 +1546,19 @@
     };
 
     /* ----------------------------------------------------------
-       SCENARIOS DATA
+       SCENARIO BANK — 20 scenarios across 7 categories
+       On each play-through, 5 are selected randomly via
+       selectRandomScenarios(). Progress dots always show 5 positions.
     ---------------------------------------------------------- */
-    const scenarios = [
+
+    // ============================================================
+    // BANKING & FINANCIAL (4 scenarios, IDs 1-4)
+    // ============================================================
+    const SCENARIO_BANK = [
       {
         id: 1,
-        type: 'sms',
-        typeLabel: '📱 Text Message',
-        sender: 'Grandson',
-        subject: null,
-        body: `Grandma, I'm in jail in Mexico. Please wire $2,000. <span class="clickable-flag" data-flag="urgent-phrase" tabindex="0" role="button" aria-label="Click if you think this phrase is suspicious">Don't tell Mom!</span> Call me at this number: 555-0199.`,
-        links: [],
-        redFlag: 'urgent-phrase',
-        isScam: true,
-        owlHint: 'Look for words that make you feel scared or rushed — scammers want to stop you from calling family first.',
-        owlCorrect: 'Perfect! Scammers create panic so you do not call family first. Always verify by calling their real number!',
-        owlDecisionCorrect: '🛡️ Excellent! That was a grandparent scam. Never wire money without verifying in person or by calling a number you already know.',
-        owlDecisionWrong: 'That one was a scam! The phrase "Don\'t tell Mom" is designed to stop you from checking with family — always verify first.'
-      },
-      {
-        id: 2,
-        type: 'alert',
-        typeLabel: '⚠️ Security Pop-up',
-        sender: 'Windows Security',
-        subject: null,
-        body: `VIRUS DETECTED! Your computer may be infected. Call Microsoft immediately at <span class="clickable-flag" data-flag="phone-number" tabindex="0" role="button" aria-label="Click if you think the phone number is suspicious">1-800-555-0199</span> to prevent data loss.`,
-        links: [],
-        redFlag: 'phone-number',
-        isScam: true,
-        owlHint: 'Real companies like Microsoft or Apple will NEVER put a phone number in a pop-up alert.',
-        owlCorrect: 'Excellent! Real Microsoft or Apple will NEVER put a phone number in a pop-up alert. If you call, scammers will take remote control of your computer!',
-        owlDecisionCorrect: '🛡️ Well done! Tech support pop-ups with phone numbers are always scams. Close the window with Alt+F4 or restart your computer.',
-        owlDecisionWrong: 'That was a scam pop-up! Real tech companies never ask you to call a number from a website alert.'
-      },
-      {
-        id: 3,
+        category: 'Banking & Financial',
+        difficulty: 'medium',
         type: 'email',
         typeLabel: '📧 Email',
         sender: '<span class="clickable-flag" data-flag="sender-address" tabindex="0" role="button" aria-label="Click if you think the sender address is suspicious">service@paypa1.com</span>',
@@ -1569,7 +1575,127 @@
         owlDecisionWrong: 'That email was a scam! The address "paypa1.com" uses the number 1 instead of the letter L to trick you.'
       },
       {
+        id: 2,
+        category: 'Banking & Financial',
+        difficulty: 'medium',
+        type: 'email',
+        typeLabel: '📧 Email',
+        sender: 'security@dbs-alert-sg.com',
+        subject: 'URGENT: Your DBS iBanking Has Been Suspended',
+        body: `Dear Valued Customer,\n\nMultiple failed login attempts have been detected on your DBS account. For your protection, we have temporarily suspended your iBanking access.\n\nTo reactivate your account, please verify your identity within 24 hours or your account will be permanently closed.\n\n`,
+        links: [
+          { text: 'Reactivate My Account', href: 'http://dbs-verify.account-restore.xyz/login', isRedFlag: true, flagId: 'reactivate-link' }
+        ],
+        redFlag: 'reactivate-link',
+        isScam: true,
+        owlHint: 'Hover your mouse over the link — look very carefully at where it really goes!',
+        owlCorrect: 'Well spotted! The link goes to "account-restore.xyz" — not dbs.com.sg. Real DBS links always use dbs.com.sg.',
+        owlDecisionCorrect: '🛡️ Excellent! DBS will never send links to strange websites. Always go directly to dbs.com.sg or use the DBS app.',
+        owlDecisionWrong: 'That was a scam! The link goes to a fake website — not the real DBS site at dbs.com.sg.'
+      },
+      {
+        id: 3,
+        category: 'Banking & Financial',
+        difficulty: 'hard',
+        type: 'sms',
+        typeLabel: '📱 Text Message',
+        sender: 'POSB',
+        subject: null,
+        body: `POSB: We detected a suspicious transaction of $1,288 on your account. <span class="clickable-flag" data-flag="urgent-phrase" tabindex="0" role="button" aria-label="Click if you think this phrase is suspicious">If this was not you, please call us immediately at +65 6224 7878 to freeze your account.</span> Do not share your OTP with anyone.`,
+        links: [],
+        redFlag: 'urgent-phrase',
+        isScam: true,
+        owlHint: 'This SMS is creating panic so you will call a number they control. Always find the real bank number yourself — never use a number in a suspicious message.',
+        owlCorrect: 'Good thinking! Scammers send urgent messages with a fake bank number. If you call it, they pretend to be the bank and steal your details.',
+        owlDecisionCorrect: '🛡️ Well done! Never call a phone number from an unexpected SMS. Always find the bank number on the back of your card or the official website.',
+        owlDecisionWrong: 'That was a scam! The phone number in the message belongs to scammers, not the real POSB bank.'
+      },
+      {
         id: 4,
+        category: 'Banking & Financial',
+        difficulty: 'easy',
+        type: 'email',
+        typeLabel: '📧 Email',
+        sender: '<span class="clickable-flag" data-flag="sender-address" tabindex="0" role="button" aria-label="Click if you think the sender address is suspicious">alerts@ocbc-secure.net</span>',
+        subject: 'Action Required: Unusual Sign-In Detected',
+        body: `Dear OCBC Customer,\n\nWe have detected a sign-in attempt from an unfamiliar device. Your account has been flagged for review.\n\nPlease confirm your identity to keep your account secure.\n\n`,
+        links: [
+          { text: 'Confirm My Identity', href: 'http://ocbc.account-verify.tk/secure' }
+        ],
+        redFlag: 'sender-address',
+        isScam: true,
+        owlHint: 'Look very carefully at the email address that sent this message. Is it really from OCBC?',
+        owlCorrect: 'Correct! Real OCBC emails come from @ocbc.com — not "ocbc-secure.net". That extra word "secure" is a trick!',
+        owlDecisionCorrect: '🛡️ Sharp eyes! Real banks use their official domain. "ocbc-secure.net" is a fake address designed to look official.',
+        owlDecisionWrong: 'That was a scam! OCBC emails always come from @ocbc.com — never from a different domain like "ocbc-secure.net".'
+      },
+
+      // ============================================================
+      // GOVERNMENT IMPERSONATION (3 scenarios, IDs 5-7)
+      // ============================================================
+      {
+        id: 5,
+        category: 'Government Impersonation',
+        difficulty: 'medium',
+        type: 'sms',
+        typeLabel: '📱 Text Message',
+        sender: 'SingPass',
+        subject: null,
+        body: `SingPass: Your account has been locked due to suspicious activity. <span class="clickable-flag" data-flag="urgent-phrase" tabindex="0" role="button" aria-label="Click if you think this phrase is suspicious">Verify your identity now at this link or your SingPass will be permanently disabled within 2 hours.</span>`,
+        links: [
+          { text: 'Verify Now', href: 'http://singpass-verify.account-sg.xyz/unlock' }
+        ],
+        redFlag: 'urgent-phrase',
+        isScam: true,
+        owlHint: 'Be careful of messages that say something bad will happen very soon unless you act immediately. Real government agencies do not threaten you like this.',
+        owlCorrect: 'Well spotted! The threat of "2 hours" is designed to make you panic and click without thinking. Real SingPass never threatens you this way.',
+        owlDecisionCorrect: '🛡️ Excellent! Real government agencies never send threatening SMS messages. Always log in through the official SingPass app.',
+        owlDecisionWrong: 'That was a scam! Real SingPass messages never threaten to permanently disable your account. They also never send you to unofficial websites.'
+      },
+      {
+        id: 6,
+        category: 'Government Impersonation',
+        difficulty: 'medium',
+        type: 'email',
+        typeLabel: '📧 Email',
+        sender: 'cpf-nomination@cpf-board.com',
+        subject: 'Action Required: Update Your CPF Nomination',
+        body: `Dear CPF Member,\n\nOur records show your CPF nomination is outdated or incomplete. Unupdated nominations may delay payouts to your family.\n\nPlease update your nomination details before the 30th of this month to avoid processing delays.\n\n`,
+        links: [
+          { text: 'Update My Nomination', href: 'http://cpf-board.com.update-nomination.ru/form', isRedFlag: true, flagId: 'cpf-link' }
+        ],
+        redFlag: 'cpf-link',
+        isScam: true,
+        owlHint: 'Before clicking any link, hover over it to see where it really goes.',
+        owlCorrect: 'You found it! The link goes to a ".ru" (Russia) website, not the real CPF website at cpf.gov.sg. All real Singapore government sites end in ".gov.sg".',
+        owlDecisionCorrect: '🛡️ Smart! Singapore government websites always end in ".gov.sg". Any link that does not end in ".gov.sg" is not a real government site.',
+        owlDecisionWrong: 'That was a scam! The link goes to a Russian website, not the real CPF. Always check that government links end in ".gov.sg".'
+      },
+      {
+        id: 7,
+        category: 'Government Impersonation',
+        difficulty: 'easy',
+        type: 'sms',
+        typeLabel: '📱 Text Message',
+        sender: '+65 8123 4567',
+        subject: null,
+        body: `MOH: You are eligible for a free Healthier SG check-up. Tap the link to book your appointment: http://moh-healthiersg-appt.xyz/book — Limited slots available. <span class="clickable-flag" data-flag="urgent-phrase" tabindex="0" role="button" aria-label="Click if you think this phrase is suspicious">Offer expires tonight at midnight.</span>`,
+        links: [],
+        redFlag: 'urgent-phrase',
+        isScam: true,
+        owlHint: 'Be careful when a message says an offer expires very soon. This is meant to rush you so you do not check if it is real.',
+        owlCorrect: 'Good catch! "Expires tonight at midnight" is pressure to make you act fast. Real MOH appointments do not expire in hours.',
+        owlDecisionCorrect: '🛡️ Well done! Legitimate government appointments are never this rushed. Always book through the official HealthHub app or call your GP directly.',
+        owlDecisionWrong: 'That was a scam! Real government health messages do not expire at midnight. The link also goes to a suspicious website, not moh.gov.sg.'
+      },
+
+      // ============================================================
+      // DELIVERY & SHOPPING (3 scenarios, IDs 8-10)
+      // ============================================================
+      {
+        id: 8,
+        category: 'Delivery & Shopping',
+        difficulty: 'medium',
         type: 'email',
         typeLabel: '📧 Email',
         sender: 'order-update@amaz0n.com',
@@ -1586,7 +1712,248 @@
         owlDecisionWrong: 'That was a scam! The "Cancel This Order" link goes to a site in Russia, not Amazon.'
       },
       {
-        id: 5,
+        id: 9,
+        category: 'Delivery & Shopping',
+        difficulty: 'easy',
+        type: 'sms',
+        typeLabel: '📱 Text Message',
+        sender: 'Lazada-SG',
+        subject: null,
+        body: `Lazada: Your parcel #LZ88291 could not be delivered. <span class="clickable-flag" data-flag="urgent-phrase" tabindex="0" role="button" aria-label="Click if you think this phrase is suspicious">Please pay a small re-delivery fee of $2.50 within 24 hours or your parcel will be returned.</span> Pay here: http://lazada-redeliver.xyz/pay`,
+        links: [],
+        redFlag: 'urgent-phrase',
+        isScam: true,
+        owlHint: 'Be very careful of delivery messages that ask you to pay a fee. Real delivery companies do not send you to unofficial websites to collect payment.',
+        owlCorrect: 'Good spotting! "Within 24 hours" is panic language. And real Lazada never asks you to pay re-delivery fees on unofficial websites.',
+        owlDecisionCorrect: '🛡️ Well done! Delivery re-delivery fee scams are very common. Always check your Lazada app directly for any parcel updates.',
+        owlDecisionWrong: 'That was a scam! Real Lazada does not charge re-delivery fees through suspicious links. Always check orders through the official Lazada app.'
+      },
+      {
+        id: 10,
+        category: 'Delivery & Shopping',
+        difficulty: 'easy',
+        type: 'sms',
+        typeLabel: '📱 Text Message',
+        sender: '+65 9888 7766',
+        subject: null,
+        body: `Shopee: Congratulations! You have earned $50 cashback for this month. <span class="clickable-flag" data-flag="urgent-phrase" tabindex="0" role="button" aria-label="Click if you think this phrase is suspicious">Claim your cashback now before it expires at 11:59 PM tonight.</span> Tap: http://shopee-cashback-sg.xyz/claim`,
+        links: [],
+        redFlag: 'urgent-phrase',
+        isScam: true,
+        owlHint: 'A message saying your reward expires tonight is trying to make you act fast without thinking. Real cashback rewards do not disappear overnight.',
+        owlCorrect: 'Correct! This urgency is a trick. Real Shopee cashback never expires overnight — and Shopee never sends you to unofficial ".xyz" websites.',
+        owlDecisionCorrect: '🛡️ Great work! If you ever receive a cashback notice, check your Shopee wallet directly inside the app — not through a link in an SMS.',
+        owlDecisionWrong: 'That was a scam! Real Shopee cashback does not expire at midnight. Always check promotions through the official Shopee app, not SMS links.'
+      },
+
+      // ============================================================
+      // TECH SUPPORT & SECURITY (3 scenarios, IDs 11-13)
+      // ============================================================
+      {
+        id: 11,
+        category: 'Tech Support & Security',
+        difficulty: 'easy',
+        type: 'alert',
+        typeLabel: '⚠️ Security Pop-up',
+        sender: 'Windows Security',
+        subject: null,
+        body: `VIRUS DETECTED! Your computer may be infected. Call Microsoft immediately at <span class="clickable-flag" data-flag="phone-number" tabindex="0" role="button" aria-label="Click if you think the phone number is suspicious">1-800-555-0199</span> to prevent data loss.`,
+        links: [],
+        redFlag: 'phone-number',
+        isScam: true,
+        owlHint: 'Real companies like Microsoft or Apple will NEVER put a phone number in a pop-up alert.',
+        owlCorrect: 'Excellent! Real Microsoft or Apple will NEVER put a phone number in a pop-up alert. If you call, scammers will take remote control of your computer!',
+        owlDecisionCorrect: '🛡️ Well done! Tech support pop-ups with phone numbers are always scams. Close the window with Alt+F4 or restart your computer.',
+        owlDecisionWrong: 'That was a scam pop-up! Real tech companies never ask you to call a number from a website alert.'
+      },
+      {
+        id: 12,
+        category: 'Tech Support & Security',
+        difficulty: 'medium',
+        type: 'email',
+        typeLabel: '📧 Email',
+        sender: '<span class="clickable-flag" data-flag="sender-address" tabindex="0" role="button" aria-label="Click if you think the sender address is suspicious">noreply@app1e-id.com</span>',
+        subject: 'Your Apple ID Has Been Suspended',
+        body: `Dear Apple User,\n\nYour Apple ID has been locked due to unusual sign-in activity. You will not be able to access iCloud, App Store, or iMessage until you verify your account.\n\nPlease verify your Apple ID to restore full access.\n\n`,
+        links: [
+          { text: 'Verify Apple ID', href: 'http://appleid.account-restore.top/verify' }
+        ],
+        redFlag: 'sender-address',
+        isScam: true,
+        owlHint: 'Look very carefully at the sender email address. Is every letter correct?',
+        owlCorrect: 'Great catch! The address says "app<strong>1</strong>e-id.com" — that is a number 1, not the letter L! Real Apple emails come from @apple.com only.',
+        owlDecisionCorrect: '🛡️ Excellent! Scammers replace letters with numbers to fool you. Always check every single character in the sender address.',
+        owlDecisionWrong: 'That was a scam! The address "app1e-id.com" uses the number 1 instead of the letter L. Real Apple emails only come from @apple.com.'
+      },
+      {
+        id: 13,
+        category: 'Tech Support & Security',
+        difficulty: 'hard',
+        type: 'email',
+        typeLabel: '📧 Email',
+        sender: 'renewal@norton-antivirus.net',
+        subject: 'Your Norton AntiVirus Subscription Has Expired',
+        body: `Dear Customer,\n\nYour Norton AntiVirus subscription has expired. Your computer is now unprotected and at risk.\n\nRenew your subscription today to keep your device safe. Your credit card ending in 4832 has been charged $89.99.\n\n`,
+        links: [
+          { text: 'Cancel This Charge', href: 'http://norton-billing.account-cancel.xyz/refund', isRedFlag: true, flagId: 'norton-link' }
+        ],
+        redFlag: 'norton-link',
+        isScam: true,
+        owlHint: 'This email says your card was already charged — check where the link goes before you click.',
+        owlCorrect: 'Well spotted! The link goes to ".xyz" — not the real Norton website. Real Norton uses norton.com. This scam tricks you with a fake charge to make you panic and click.',
+        owlDecisionCorrect: '🛡️ Smart! This is a fake billing scam. Real Norton never contacts you through unofficial websites. Contact your bank directly if you are worried about a charge.',
+        owlDecisionWrong: 'That was a scam! The "Cancel This Charge" link goes to a fake website. Real Norton only uses norton.com — never strange domains like ".xyz".'
+      },
+
+      // ============================================================
+      // GRANDPARENT & FAMILY (3 scenarios, IDs 14-16)
+      // ============================================================
+      {
+        id: 14,
+        category: 'Grandparent & Family',
+        difficulty: 'easy',
+        type: 'sms',
+        typeLabel: '📱 Text Message',
+        sender: 'Grandson',
+        subject: null,
+        body: `Grandma, I'm in jail in Mexico. Please wire $2,000. <span class="clickable-flag" data-flag="urgent-phrase" tabindex="0" role="button" aria-label="Click if you think this phrase is suspicious">Don't tell Mom!</span> Call me at this number: 555-0199.`,
+        links: [],
+        redFlag: 'urgent-phrase',
+        isScam: true,
+        owlHint: 'Look for words that make you feel scared or rushed — scammers want to stop you from calling family first.',
+        owlCorrect: 'Perfect! Scammers create panic so you do not call family first. Always verify by calling their real number!',
+        owlDecisionCorrect: '🛡️ Excellent! That was a grandparent scam. Never wire money without verifying in person or by calling a number you already know.',
+        owlDecisionWrong: 'That one was a scam! The phrase "Don\'t tell Mom" is designed to stop you from checking with family — always verify first.'
+      },
+      {
+        id: 15,
+        category: 'Grandparent & Family',
+        difficulty: 'medium',
+        type: 'sms',
+        typeLabel: '📱 Text Message',
+        sender: '+65 9234 5678',
+        subject: null,
+        body: `Hi Mum, it's me. I broke my phone and this is a friend's number. <span class="clickable-flag" data-flag="urgent-phrase" tabindex="0" role="button" aria-label="Click if you think this phrase is suspicious">I'm in trouble and need you to transfer $800 to this PayNow number right now. Please don't tell Dad, I'll explain later.</span>`,
+        links: [],
+        redFlag: 'urgent-phrase',
+        isScam: true,
+        owlHint: 'When someone says "don\'t tell" another family member and needs money urgently from an unknown number, always call your child\'s real number first.',
+        owlCorrect: 'Well done! "Don\'t tell Dad" and "right now" are classic tricks to stop you from verifying. Always call your child\'s real number before sending any money.',
+        owlDecisionCorrect: '🛡️ Excellent! This is a very common family impersonation scam in Singapore. Always call back on the real number before sending any money.',
+        owlDecisionWrong: 'That was a scam! Scammers say "don\'t tell" other family members so you cannot verify. Always call your family member\'s real number first.'
+      },
+      {
+        id: 16,
+        category: 'Grandparent & Family',
+        difficulty: 'hard',
+        type: 'sms',
+        typeLabel: '📱 Text Message',
+        sender: 'WhatsApp',
+        subject: null,
+        body: `[WhatsApp] Your verification code is <span class="clickable-flag" data-flag="urgent-phrase" tabindex="0" role="button" aria-label="Click if you think this phrase is suspicious">947-382. Do not share this code with anyone, including friends and family.</span> If you did not request this, your account may be at risk.`,
+        links: [],
+        redFlag: 'urgent-phrase',
+        isScam: true,
+        owlHint: 'If you receive a verification code you did not ask for, someone is trying to take over your WhatsApp account. Never share this code with anyone — not even someone who claims to be your friend or family.',
+        owlCorrect: 'Good instinct! You did not request a WhatsApp code — someone is trying to steal your account. If a "friend" or "family member" texts you asking for this code, it means their account was already hacked.',
+        owlDecisionCorrect: '🛡️ Smart! Never share WhatsApp verification codes. If someone asks you for a code — even your closest friend — say no and call them directly to check.',
+        owlDecisionWrong: 'This was a suspicious message! If you receive a verification code you did not request, someone is trying to take over your WhatsApp. Never share such codes.'
+      },
+
+      // ============================================================
+      // SOCIAL & COMMUNICATION (2 scenarios, IDs 17-18)
+      // ============================================================
+      {
+        id: 17,
+        category: 'Social & Communication',
+        difficulty: 'medium',
+        type: 'email',
+        typeLabel: '📧 Email',
+        sender: '<span class="clickable-flag" data-flag="sender-address" tabindex="0" role="button" aria-label="Click if you think the sender address is suspicious">security@facebok.com</span>',
+        subject: 'Your Facebook Account Will Be Disabled',
+        body: `Dear Facebook User,\n\nWe have received a report that your account has violated our Community Standards. Your account is scheduled for permanent removal in 24 hours.\n\nIf you believe this is an error, please submit an appeal immediately.\n\n`,
+        links: [
+          { text: 'Submit My Appeal', href: 'http://facebook.account-appeal.tk/review' }
+        ],
+        redFlag: 'sender-address',
+        isScam: true,
+        owlHint: 'Read the sender email address one letter at a time. Is it really from Facebook?',
+        owlCorrect: 'Well spotted! The address says "face<strong>bok</strong>.com" — it is missing the letter "o" in "book". Real Facebook emails always come from @facebook.com.',
+        owlDecisionCorrect: '🛡️ Sharp eyes! One missing letter is enough to create a fake email address. Always read email addresses very slowly, letter by letter.',
+        owlDecisionWrong: 'That was a scam! "facebok.com" is missing a letter — it should be "facebook.com". Scammers use near-identical addresses to trick you.'
+      },
+      {
+        id: 18,
+        category: 'Social & Communication',
+        difficulty: 'hard',
+        type: 'email',
+        typeLabel: '📧 Email',
+        sender: 'copyright@instagram-support.com',
+        subject: 'Copyright Violation Notice — Account Suspension Pending',
+        body: `Dear Instagram User,\n\nA copyright complaint has been filed against a post on your account. Under our Terms of Service, repeated violations may result in permanent account suspension.\n\nYou have 48 hours to dispute this claim. Failure to respond will result in account closure.\n\n`,
+        links: [
+          { text: 'Dispute This Claim', href: 'http://instagram-support.com.dispute-form.ru/login', isRedFlag: true, flagId: 'instagram-link' }
+        ],
+        redFlag: 'instagram-link',
+        isScam: true,
+        owlHint: 'Hover over the link before clicking. Where does it really go?',
+        owlCorrect: 'You found it! The link goes to a ".ru" website (Russia), not the real Instagram. Real Instagram support links always use instagram.com.',
+        owlDecisionCorrect: '🛡️ Excellent! Real Instagram uses instagram.com for all official pages. The ".ru" at the end reveals this is a scam site.',
+        owlDecisionWrong: 'That was a scam! The link goes to a Russian website, not the real Instagram. Real Instagram links always end in instagram.com.'
+      },
+
+      // ============================================================
+      // LOTTERY & PRIZES (2 scenarios, IDs 19-20)
+      // ============================================================
+      {
+        id: 19,
+        category: 'Lottery & Prizes',
+        difficulty: 'easy',
+        type: 'sms',
+        typeLabel: '📱 Text Message',
+        sender: '+65 8877 6655',
+        subject: null,
+        body: `Congratulations! Your TOTO ticket number 4-8-15-23-31-42 has won a 2nd Prize of $45,000! <span class="clickable-flag" data-flag="urgent-phrase" tabindex="0" role="button" aria-label="Click if you think this phrase is suspicious">You must claim your prize within 24 hours or it will be forfeited.</span> Call: +65 6534 9900 to arrange collection.`,
+        links: [],
+        redFlag: 'urgent-phrase',
+        isScam: true,
+        owlHint: 'Think about this: Singapore Pools never contacts TOTO winners by SMS. Winners must visit a Singapore Pools outlet to claim prizes. This urgency is fake.',
+        owlCorrect: 'Good instinct! Singapore Pools never sends winning notifications by SMS. You must visit them in person to claim any prize — there is no 24-hour deadline like this.',
+        owlDecisionCorrect: '🛡️ Smart! Real TOTO prizes are claimed in person at Singapore Pools outlets. You will never receive a winning SMS with a phone number to call.',
+        owlDecisionWrong: 'That was a scam! Singapore Pools never contacts winners by SMS. Real TOTO prizes must be claimed in person at a Singapore Pools outlet.'
+      },
+      {
+        id: 20,
+        category: 'Lottery & Prizes',
+        difficulty: 'medium',
+        type: 'email',
+        typeLabel: '📧 Email',
+        sender: 'winners@sg-lucky-draw-2025.com',
+        subject: 'You Have Been Selected! Claim Your $10,000 Prize',
+        body: `Dear Lucky Winner,\n\nYou have been randomly selected as a winner of our Annual Singapore Lucky Draw 2025! Your prize is $10,000 cash.\n\nTo receive your prize, a small processing fee of $50 is required to cover administrative costs. Please provide your bank details to proceed.\n\n`,
+        links: [
+          { text: 'Claim My Prize', href: 'http://sg-lucky-draw-2025.com/winners/claim', isRedFlag: true, flagId: 'lucky-draw-link' }
+        ],
+        redFlag: 'lucky-draw-link',
+        isScam: true,
+        owlHint: 'Any prize that asks you to pay a fee first is always a scam. Hover over the link to see where it goes.',
+        owlCorrect: 'Well spotted! Legitimate prizes never charge you a fee to collect them. And the link goes to a suspicious website — not any official organisation.',
+        owlDecisionCorrect: '🛡️ Excellent! Remember this rule: if you have to pay money to get money, it is always a scam. Legitimate contests never charge processing fees.',
+        owlDecisionWrong: 'That was a scam! Real prizes never require you to pay a fee first. The rule is: if you must pay to collect, walk away!'
+      },
+
+      // ============================================================
+      // SAFE SCENARIOS (3 scenarios — legitimate messages, IDs already
+      // covered above; these are additional safe ones, IDs 21-23)
+      // NOTE: ID references here are for readability; selection uses
+      // array position only.
+      // ============================================================
+
+      /* --- SAFE SCENARIO A: Legitimate Amazon shipping --- */
+      {
+        id: 21,
+        category: 'Safe Message',
+        difficulty: 'medium',
         type: 'email',
         typeLabel: '📧 Email',
         sender: 'no-reply@amazon.com',
@@ -1595,14 +1962,75 @@
         links: [
           { text: 'Track Package', href: 'https://amazon.com/your-orders/track' }
         ],
-        redFlag: null,   /* this scenario is SAFE */
+        redFlag: null,
         isScam: false,
         owlHint: 'Everything looks legitimate here. The sender is correct and links go to amazon.com.',
         owlCorrect: 'Correct! This is a real Amazon email. The sender address is right, and the link goes to the real Amazon website.',
         owlDecisionCorrect: '🛡️ Excellent judgement! This was a real email. The sender is @amazon.com and the link goes to the real Amazon site.',
         owlDecisionWrong: 'This was actually a real, safe email! The sender "@amazon.com" is correct, and the link goes to the real Amazon website. Always check both carefully.'
+      },
+
+      /* --- SAFE SCENARIO B: Legitimate CPF contribution notice --- */
+      {
+        id: 22,
+        category: 'Safe Message',
+        difficulty: 'hard',
+        type: 'email',
+        typeLabel: '📧 Email',
+        sender: 'cpf-notification@cpf.gov.sg',
+        subject: 'Your CPF Contribution Statement for October 2025',
+        body: `Dear CPF Member,\n\nYour CPF contribution statement for October 2025 is now available.\n\nOrdinary Account: $1,245.00 credited\nSpecial Account: $312.00 credited\nMedisave Account: $750.00 credited\n\nYou may view your detailed statement by logging in through the CPF Board website at cpf.gov.sg.\n\n`,
+        links: [
+          { text: 'Log In to CPF Website', href: 'https://www.cpf.gov.sg/member' }
+        ],
+        redFlag: null,
+        isScam: false,
+        owlHint: 'Look carefully at the sender address and the link. Where do they come from and go to?',
+        owlCorrect: 'That is right — this is a real CPF notification! The sender is @cpf.gov.sg and the link goes directly to cpf.gov.sg. Both end in ".gov.sg" which confirms they are genuine Singapore government domains.',
+        owlDecisionCorrect: '🛡️ Excellent! This was a real CPF notification. The sender ends in ".gov.sg" and the link goes to the official CPF website. Safe to keep!',
+        owlDecisionWrong: 'This was actually a real, safe CPF email! The sender @cpf.gov.sg and the link to cpf.gov.sg are both correct official government addresses.'
+      },
+
+      /* --- SAFE SCENARIO C: Legitimate Singtel bill notification --- */
+      {
+        id: 23,
+        category: 'Safe Message',
+        difficulty: 'hard',
+        type: 'email',
+        typeLabel: '📧 Email',
+        sender: 'billing@singtel.com',
+        subject: 'Your Singtel Bill for November 2025 is Ready',
+        body: `Dear Singtel Customer,\n\nYour bill for November 2025 is now ready.\n\nTotal amount due: <strong>$42.90</strong>\nPayment due date: <strong>15 December 2025</strong>\n\nYou can view and pay your bill through the My Singtel app or at singtel.com/myaccount.\n\n`,
+        links: [
+          { text: 'View My Bill', href: 'https://www.singtel.com/personal/support/billing' }
+        ],
+        redFlag: null,
+        isScam: false,
+        owlHint: 'Check the sender address and the link. Do they come from a legitimate, well-known company?',
+        owlCorrect: 'Correct — this is a real Singtel billing email! The sender is @singtel.com and the link goes to singtel.com. Both are from the official Singtel domain.',
+        owlDecisionCorrect: '🛡️ Good call! This was a real Singtel bill notification. The sender and link both use the official singtel.com domain. It is safe.',
+        owlDecisionWrong: 'This was actually a real Singtel billing email! The sender @singtel.com and link to singtel.com are both the official Singtel website. Not every unexpected email is a scam!'
       }
     ];
+
+    /* ----------------------------------------------------------
+       SELECTED SCENARIOS — 5 randomly chosen each play-through
+    ---------------------------------------------------------- */
+    let _selectedScenarios = [];
+
+    /**
+     * Fisher-Yates shuffle to select 5 unique random scenarios
+     * from SCENARIO_BANK. Called at game start and on Play Again.
+     */
+    function selectRandomScenarios() {
+      const indices = Array.from({ length: SCENARIO_BANK.length }, (_, i) => i);
+      // Fisher-Yates shuffle
+      for (let i = indices.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [indices[i], indices[j]] = [indices[j], indices[i]];
+      }
+      _selectedScenarios = indices.slice(0, 5).map(i => SCENARIO_BANK[i]);
+    }
 
     /* ----------------------------------------------------------
        STATE — encapsulated in closure
@@ -1768,7 +2196,7 @@
       const row = document.getElementById('progress-row');
       if (!row) return;
       row.innerHTML = '';
-      for (let i = 0; i < scenarios.length; i++) {
+      for (let i = 0; i < _selectedScenarios.length; i++) {
         const dot = document.createElement('div');
         dot.className = 'prog-dot' + (i < _currentIndex ? ' done' : i === _currentIndex ? ' active' : '');
         dot.setAttribute('role', 'listitem');
@@ -1776,14 +2204,14 @@
         row.appendChild(dot);
       }
       const ctr = document.getElementById('scenario-counter');
-      if (ctr) ctr.textContent = `Message ${_currentIndex+1} of ${scenarios.length}`;
+      if (ctr) ctr.textContent = `Message ${_currentIndex+1} of ${_selectedScenarios.length}`;
     }
 
     /* ----------------------------------------------------------
-       RENDER SCENARIO (core scenarios 1-5)
+       RENDER SCENARIO — draws from _selectedScenarios (5 random picks)
     ---------------------------------------------------------- */
     function renderScenario(index) {
-      const sc = scenarios[index];
+      const sc = _selectedScenarios[index];
 
       /* Homoglyph audit for dev review */
       const senderGlyphs = detectHomoglyphs(sc.sender);
@@ -1807,7 +2235,7 @@
 
       const el     = e.currentTarget || this;
       const flagId = el.getAttribute('data-flag');
-      const sc     = _endlessMode ? _currentAIScenario : scenarios[_currentIndex];
+      const sc     = _endlessMode ? _currentAIScenario : _selectedScenarios[_currentIndex];
 
       _flagClicked = true;
 
@@ -1831,7 +2259,7 @@
     ---------------------------------------------------------- */
     function handleDecision(keepMessage) {
       if (_decisionMade) return;
-      const sc = _endlessMode ? _currentAIScenario : scenarios[_currentIndex];
+      const sc = _endlessMode ? _currentAIScenario : _selectedScenarios[_currentIndex];
 
       _decisionMade = true;
       setButtonsEnabled(false);
@@ -1868,7 +2296,7 @@
         nextBtn.classList.add('visible');
         nextBtn.textContent = '➡️ Next AI Scenario';
         document.getElementById('end-endless-btn').hidden = false;
-      } else if (_currentIndex < scenarios.length - 1) {
+      } else if (_currentIndex < _selectedScenarios.length - 1) {
         nextBtn.classList.add('visible');
         nextBtn.textContent = '➡️ Next Message';
       } else {
@@ -1901,7 +2329,7 @@
        SAFE SCENARIO: if no red flag, enable buttons immediately
     ---------------------------------------------------------- */
     function checkSafeScenario() {
-      const sc = _endlessMode ? _currentAIScenario : scenarios[_currentIndex];
+      const sc = _endlessMode ? _currentAIScenario : _selectedScenarios[_currentIndex];
       if (sc && sc.redFlag === null) {
         setButtonsEnabled(true);
         setOwlText('This message looks clean to me. Do you think it is safe or a scam?', true);
@@ -1917,7 +2345,7 @@
         return;
       }
       _currentIndex++;
-      if (_currentIndex >= scenarios.length) {
+      if (_currentIndex >= _selectedScenarios.length) {
         showCompletionModal();
         return;
       }
@@ -2109,21 +2537,41 @@
 
     /* ----------------------------------------------------------
        COMPLETION MODAL
+       Minimum 3 shields required to unlock the certificate.
     ---------------------------------------------------------- */
     function showCompletionModal() {
-      const overlay = document.getElementById('modal-overlay');
-      const desc    = document.getElementById('modal-desc');
-      const shields = document.getElementById('modal-shields');
+      const overlay    = document.getElementById('modal-overlay');
+      const desc       = document.getElementById('modal-desc');
+      const shields    = document.getElementById('modal-shields');
+      const certArea   = document.getElementById('cert-area');
+      const noCertArea = document.getElementById('no-cert-area');
+      const noCertMsg  = document.getElementById('no-cert-msg');
 
       if (_endlessMode) {
         desc.textContent = `Great practice! You have earned ${_score} shield${_score !== 1 ? 's' : ''} from the core training. ${_score === 5 ? '🏆 Perfect core score!' : ''}`;
       } else {
-        desc.textContent = `You have earned ${_score} shield${_score !== 1 ? 's' : ''}! ${_score === 5 ? '🏆 Perfect score!' : _score >= 3 ? '🌟 Great work!' : 'Keep practising!'}`;
+        desc.textContent = `You have earned ${_score} shield${_score !== 1 ? 's' : ''}! ${_score === 5 ? '🏆 Perfect score!' : _score >= 3 ? '🌟 Great work — you qualify for a certificate!' : ''}`;
       }
 
       renderShields(shields, _score);
+
+      /* Gate certificate on minimum 3 shields */
+      if (_score >= 3) {
+        if (certArea)   certArea.style.display   = 'block';
+        if (noCertArea) noCertArea.style.display = 'none';
+        document.getElementById('name-field').focus();
+      } else {
+        if (certArea)   certArea.style.display   = 'none';
+        if (noCertArea) noCertArea.style.display = 'block';
+        if (noCertMsg) {
+          noCertMsg.innerHTML = `You earned <strong>${_score}</strong> out of 5 shields. You need at least <strong>3 shields</strong> to earn your certificate. Would you like to try again?`;
+        }
+        /* Focus the try-again button for accessibility */
+        const tryBtn = document.getElementById('try-again-btn');
+        if (tryBtn) setTimeout(() => tryBtn.focus(), 100);
+      }
+
       overlay.classList.add('visible');
-      document.getElementById('name-field').focus();
 
       /* Pre-compute weak/strong areas for caregiver report */
       _computePerformanceAreas();
@@ -2319,15 +2767,15 @@
       _weakAreas         = [];
       _strongAreas       = [];
       _currentAIScenario = null;
+      _selectedScenarios = [];
       clearState();
       renderShields(document.getElementById('shields-row'), 0);
       document.getElementById('game-screen').hidden    = true;
       document.getElementById('welcome-screen').hidden = false;
       document.getElementById('modal-overlay').classList.remove('visible');
-      
       document.getElementById('caregiver-guide-output').classList.remove('visible');
-      const old = document.getElementById('ai-disclaimer-strip');
-      if (old) old.remove();
+      const oldStrip = document.getElementById('ai-disclaimer-strip');
+      if (oldStrip) oldStrip.remove();
       setOwlText('Hello! I am Professor Hoot. Ready to learn about phishing scams?', false);
     }
 
@@ -2401,7 +2849,8 @@
       renderShields(document.getElementById('shields-row'), _score);
 
       /* Restore progress if mid-game */
-      if (_started && _currentIndex < scenarios.length) {
+      if (_started && _currentIndex < 5) {
+        if (_selectedScenarios.length === 0) selectRandomScenarios(); /* rebuild bank after page refresh */
         document.getElementById('welcome-screen').hidden = true;
         document.getElementById('game-screen').hidden    = false;
         renderScenario(_currentIndex);
@@ -2424,9 +2873,9 @@
         _weakAreas         = [];
         _strongAreas       = [];
         _currentAIScenario = null;
+        selectRandomScenarios(); /* pick 5 new random scenarios for this play-through */
         document.getElementById('welcome-screen').hidden = true;
         document.getElementById('game-screen').hidden    = false;
-        
         renderScenario(0);
         checkSafeScenario();
         saveState();
@@ -2531,14 +2980,14 @@
         }
       });
 
-      /* Play again */
-      document.getElementById('again-btn').addEventListener('click', () => {
+      /* Try again (shown when score < 3) */
+      document.getElementById('try-again-btn').addEventListener('click', () => {
         document.getElementById('modal-overlay').classList.remove('visible');
         document.getElementById('caregiver-guide-output').classList.remove('visible');
         document.getElementById('guide-name-wrap').classList.remove('visible');
         document.getElementById('end-endless-btn').hidden = true;
-        const old = document.getElementById('ai-disclaimer-strip');
-        if (old) old.remove();
+        const oldStrip2 = document.getElementById('ai-disclaimer-strip');
+        if (oldStrip2) oldStrip2.remove();
         _score           = 0;
         _currentIndex    = 0;
         _started         = true;
@@ -2548,6 +2997,32 @@
         _weakAreas       = [];
         _strongAreas     = [];
         _currentAIScenario = null;
+        selectRandomScenarios(); /* fresh 5 random scenarios */
+        clearState();
+        renderShields(document.getElementById('shields-row'), 0);
+        renderScenario(0);
+        checkSafeScenario();
+        saveState();
+      });
+
+      /* Play again */
+      document.getElementById('again-btn').addEventListener('click', () => {
+        document.getElementById('modal-overlay').classList.remove('visible');
+        document.getElementById('caregiver-guide-output').classList.remove('visible');
+        document.getElementById('guide-name-wrap').classList.remove('visible');
+        document.getElementById('end-endless-btn').hidden = true;
+        const oldStrip = document.getElementById('ai-disclaimer-strip');
+        if (oldStrip) oldStrip.remove();
+        _score           = 0;
+        _currentIndex    = 0;
+        _started         = true;
+        _endlessMode     = false;
+        _endlessCount    = 0;
+        _scenarioResults = [];
+        _weakAreas       = [];
+        _strongAreas     = [];
+        _currentAIScenario = null;
+        selectRandomScenarios(); /* pick 5 new random scenarios */
         renderShields(document.getElementById('shields-row'), 0);
         renderScenario(0);
         checkSafeScenario();
