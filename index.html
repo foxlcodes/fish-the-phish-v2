@@ -1077,15 +1077,15 @@
            AI ENDLESS PRACTICE — lives inside the modal so it's
            always reachable, never hidden behind the overlay
       ======================================================== -->
-     <div id="endless-modal-section" style="background:linear-gradient(135deg,#1a1060,#2e6da4);border-radius:var(--radius);padding:20px;margin-bottom:12px;color:white;">
-    <p style="font-size:1rem;font-weight:700;margin-bottom:6px;">Want more practice?</p>
-    <p style="font-size:.92rem;opacity:.85;margin-bottom:14px;">Generate new AI-powered scenarios for unlimited practice.</p>
-    <button class="modal-btn" id="endless-btn" style="background:var(--gold);color:var(--blue-deep);margin-bottom:0;">
-        ✨ Try Endless Practice (AI-Generated)
-    </button>
-    <p style="font-size:.78rem;margin-top:10px;opacity:.7;">AI-generated content is for practice only</p>
-    <p style="font-size:.76rem;margin-top:4px;opacity:.6;">Powered by AI. Internet connection required.</p>
-</div>
+      <div id="endless-modal-section" style="background:linear-gradient(135deg,#1a1060,#2e6da4);border-radius:var(--radius);padding:20px;margin-bottom:12px;color:white;">
+        <p style="font-size:1rem;font-weight:700;margin-bottom:6px;">Want more practice?</p>
+        <p style="font-size:.92rem;opacity:.85;margin-bottom:14px;">Try AI-generated bonus scenarios tailored to the ones you found tricky.</p>
+        <button class="modal-btn" id="endless-btn" style="background:var(--gold);color:var(--blue-deep);margin-bottom:0;">
+          ✨ Try Endless Practice (AI-Generated)
+        </button>
+        <p style="font-size:.78rem;margin-top:10px;opacity:.7;">AI-generated content is for practice only</p>
+        <p style="font-size:.76rem;margin-top:4px;opacity:.6;">Powered by AI. Internet connection required.</p>
+      </div>
 
       <button class="modal-btn" id="again-btn">🔄 Play Again</button>
     </div>
@@ -1436,25 +1436,48 @@
        *
        * @returns {Object} raw scenario object (needs _transformAIResponse)
        */
-     _getFallbackScenario() {
-    // Pick a random scenario from the question bank as fallback
-    const randomIndex = Math.floor(Math.random() * SCENARIO_BANK.length);
-    const sc = SCENARIO_BANK[randomIndex];
-    
-    // Convert to the format expected by _transformAIResponse
-    return {
-        type:            sc.type,
-        sender:          sc.sender.replace(/<[^>]*>/g, ''), // Strip HTML tags
-        subject:         sc.subject || '',
-        message:         sc.body,
-        linkText:        sc.links.length > 0 ? sc.links[0].text : null,
-        linkHoverReveal: sc.links.length > 0 ? sc.links[0].href : null,
-        correctFlag:     sc.isScam ? (sc.redFlag === 'urgent-phrase' ? 'urgency' : sc.redFlag === 'sender-address' ? 'sender' : 'link') : 'none',
-        explanation:     sc.owlCorrect.replace(/<[^>]*>/g, ''),
-        source:          'fallback',
-        isAIGenerated:   false
-    };
-},
+      _getFallbackScenario() {
+        const fallbacks = [
+          {
+            type:            'email',
+            sender:          'support@netf1ix.com',
+            subject:         'Your Netflix Payment Failed',
+            message:         'Dear Customer, your recent payment for Netflix was declined. To avoid service interruption, please update your billing information immediately.',
+            linkText:        'Update Payment',
+            linkHoverReveal: 'http://netflix.account-verify.ru/billing',
+            correctFlag:     'sender',
+            explanation:     'Look closely at the sender address. It says netf1ix with a number 1 instead of the letter L. Real Netflix emails come from @netflix.com.',
+            source:          'fallback',
+            isAIGenerated:   false
+          },
+          {
+            type:            'sms',
+            sender:          '+65 9123 4567',
+            subject:         '',
+            message:         'Mum, I dropped my phone in the toilet! This is my friend\'s number. Can you transfer me $500? I\'ll pay you back tonight.',
+            linkText:        null,
+            linkHoverReveal: null,
+            correctFlag:     'urgency',
+            explanation:     'Scammers pretend to be family members in trouble and create urgency so you do not verify. Always call your family member\'s real number to check.',
+            source:          'fallback',
+            isAIGenerated:   false
+          },
+          {
+            type:            'email',
+            sender:          'security@dbs-verify.tk',
+            subject:         'URGENT: Your DBS Account Has Been Locked',
+            message:         'Dear customer, multiple failed login attempts have been detected. Your account has been temporarily locked for security. Please verify your identity to restore access.',
+            linkText:        'Unlock Account',
+            linkHoverReveal: 'http://dbs.account-unlock.tk',
+            correctFlag:     'link',
+            explanation:     'The link goes to a website ending in .tk, not dbs.com.sg. Real DBS messages never use strange domain endings. Always access DBS through their official app or website.',
+            source:          'fallback',
+            isAIGenerated:   false
+          }
+        ];
+        return fallbacks[Math.floor(Math.random() * fallbacks.length)];
+      },
+
       /**
        * Built-in fallback caregiver summary used when the proxy is unreachable.
        *
@@ -2808,12 +2831,12 @@ doc.save('FishThePhish_Certificate_' + safeName + '.pdf');
         (console.warn || console.log).call(console,
           '[Fish the Phish] AI proxy unavailable:', e.message);
         if (endlessBtn) {
-    endlessBtn.textContent = '📋 Try Practice Scenarios';
-    endlessBtn.title       = 'Using built-in practice scenarios (AI proxy currently unavailable)';
-}
-if (proxyNote) {
-    proxyNote.textContent  = 'Using built-in practice scenarios. AI proxy is currently unavailable.';
-}Yes
+          endlessBtn.textContent = '📋 Try Practice Scenarios';
+          endlessBtn.title       = 'AI features coming soon! Practise with our curated scenarios below.';
+        }
+        if (proxyNote) {
+          proxyNote.textContent  = 'AI features coming soon! Practise with our built-in scenarios.';
+        }
       }
     }
 
