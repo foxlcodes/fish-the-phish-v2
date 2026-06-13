@@ -2803,19 +2803,18 @@ doc.save('FishThePhish_Certificate_' + safeName + '.pdf');
           endlessBtn.textContent = '✨ Try Endless Practice (AI-Generated)';
         }
 
-     } catch (e) {
-    /* Proxy unreachable — degrade to fallback scenarios silently */
-    (console.warn || console.log).call(console,
-      '[Fish the Phish] AI proxy unavailable:', e.message);
-    if (endlessBtn) {
-        endlessBtn.textContent = '📋 Try Practice Scenarios';
-        endlessBtn.title       = 'Using built-in practice scenarios (AI proxy currently unavailable)';
-    }
-    if (proxyNote) {
-        proxyNote.textContent  = 'Using built-in practice scenarios. AI proxy is currently unavailable.';
-    }
-}
-      }
+          } catch (e) {
+        /* Proxy unreachable — degrade to fallback scenarios silently */
+        (console.warn || console.log).call(console,
+          '[Fish the Phish] AI proxy unavailable:', e.message);
+        if (endlessBtn) {
+            endlessBtn.textContent = '📋 Try Practice Scenarios';
+            endlessBtn.title       = 'Using built-in practice scenarios (AI proxy currently unavailable)';
+        }
+        if (proxyNote) {
+            proxyNote.textContent  = 'Using built-in practice scenarios. AI proxy is currently unavailable.';
+        }
+     }
     }
 
     /* ----------------------------------------------------------
