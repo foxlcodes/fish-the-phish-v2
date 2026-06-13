@@ -1030,7 +1030,7 @@
         <div style="background:#f0f4ff;border:1.5px solid #b0baf8;border-radius:var(--radius-sm);padding:14px 16px;margin-bottom:14px;text-align:left;">
           <p style="font-weight:700;color:var(--blue-deep);font-size:.95rem;margin-bottom:6px;">🔐 About your certificate hash</p>
           <p style="font-size:.88rem;color:var(--grey-mid);line-height:1.55;">
-            Your certificate contains a <strong>SHA-256 hash</strong> — a unique 64-character digital fingerprint of the entire PDF file. If even a single pixel of the certificate were changed, the hash would be completely different. This makes the certificate tamper-evident and uniquely yours.
+           Your certificate contains a <strong>SHA-256 verification string</strong>. To verify your certificate is genuine, copy the text printed on the certificate (e.g., <code style="background:#e8e8e8;padding:2px 6px;border-radius:3px;">Mary|5|13 June 2026</code>), paste it into any SHA-256 online tool or Command Prompt, and compare the hash with the one printed on the certificate. If they match, your certificate is verified.
           </p>
         </div>
       </div>
@@ -2701,38 +2701,42 @@
           doc.line(30, 150, W-30, 150);
         }
 
-        /* ── Pass 1: render content → hash the PDF bytes ── */
-        const doc1 = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
-        drawCertContent(doc1);
-        /* Add a footer placeholder so content is byte-identical to pass 2 */
-        doc1.setFontSize(9); doc1.setTextColor(180,190,200);
-        doc1.text('Fish the Phish  -  Helping seniors stay safe online', W/2, 197, { align: 'center' });
+       /* ── Build verification string and compute SHA-256 hash ── */
+const hashInput = `${name}|${_score}|${dateStr}`;
+const encoder = new TextEncoder();
+const hash = await sha256(encoder.encode(hashInput));
 
-        const pdfBytes = doc1.output('arraybuffer');
-        const hash = await sha256(pdfBytes);
+/* ── Generate the PDF ── */
+const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+drawCertContent(doc);
 
-        /* ── Pass 2: render identical content + hash + save ── */
-        const doc2 = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
-        drawCertContent(doc2);
+/* Verification string */
+doc.setFontSize(8); doc.setFont('helvetica','normal');
+doc.setTextColor(85,95,107);
+doc.text('To verify this certificate, copy the exact text below:', 22, 158);
 
-        /* Hash label */
-        doc2.setFontSize(8); doc2.setFont('helvetica','normal');
-        doc2.setTextColor(85,95,107);
-        doc2.text('SHA-256 Certificate Hash:', 22, 160);
+doc.setFont('courier','normal');
+doc.setTextColor(26,58,92);
+doc.text(hashInput, 22, 165);
 
-        /* Hash value — split across two lines to fit A4 width */
-        doc2.setFont('courier','normal');
-        doc2.setTextColor(100,110,120);
-        doc2.text(hash.slice(0, 32), 22, 167);
-        doc2.text(hash.slice(32),    22, 173);
+/* Hash label */
+doc.setFontSize(8); doc.setFont('helvetica','normal');
+doc.setTextColor(85,95,107);
+doc.text('SHA-256 Hash of the above text:', 22, 175);
 
-        /* Footer */
-        doc2.setFontSize(9); doc2.setTextColor(180,190,200);
-        doc2.text('Fish the Phish  -  Helping seniors stay safe online', W/2, 197, { align: 'center' });
+/* Hash value — split across two lines to fit A4 width */
+doc.setFont('courier','normal');
+doc.setTextColor(100,110,120);
+doc.text(hash.slice(0, 32), 22, 182);
+doc.text(hash.slice(32),    22, 188);
 
-        /* Trigger browser download */
-        const safeName = name.replace(/[^a-zA-Z0-9 _-]/g,'').replace(/\s+/g,'_');
-        doc2.save('FishThePhish_Certificate_' + safeName + '.pdf');
+/* Footer */
+doc.setFontSize(9); doc.setTextColor(180,190,200);
+doc.text('Fish the Phish  -  Helping seniors stay safe online', W/2, 197, { align: 'center' });
+
+/* Trigger browser download */
+const safeName = name.replace(/[^a-zA-Z0-9 _-]/g,'').replace(/\s+/g,'_');
+doc.save('FishThePhish_Certificate_' + safeName + '.pdf');
 
         certBtn.textContent = 'Downloaded!';
         setTimeout(() => { certBtn.textContent = origLabel; certBtn.disabled = false; }, 2500);
